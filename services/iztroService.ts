@@ -1,7 +1,38 @@
 import { astro } from 'iztro';
-import { Solar, Lunar } from 'lunar-javascript';
-import { ChildLimit, Gender, SolarTime } from 'tyme4ts';
-import { Astrolabe, Palace, Star, UserInput, FlowLayer, Horoscope, SiHua, BaZiChart, BaZiPillar, BaZiDaYun } from '../types';
+import { Solar, Lunar, LunarYear } from 'lunar-javascript';
+import {
+  ChildLimit,
+  Gender,
+  SolarTime,
+  LunarHour,
+  DefaultEightCharProvider,
+  LunarSect2EightCharProvider,
+  HeavenStem,
+  EarthBranch
+} from 'tyme4ts';
+import { calculateRelation, getShen } from 'cantian-tymext';
+import {
+  Astrolabe,
+  Palace,
+  Star,
+  UserInput,
+  FlowLayer,
+  Horoscope,
+  SiHua,
+  BaZiChart,
+  BaZiPillar,
+  BaZiDaYun,
+  PalaceMutagen,
+  BaZiFiveElementsCount,
+  BaZiRelations,
+  BaZiMeta,
+  MutagenMap,
+  MutagenMapEntry,
+  PalaceSurrounding,
+  AstrolabeMeta,
+  StarCatalogEntry,
+  DecadalMutagenMap
+} from '../types';
 
 // Calculate Time Index (0-11) based on True Solar Time
 export const calculateTimeIndex = (hour: number, minute: number, longitude: number): number => {
@@ -36,6 +67,10 @@ const SI_HUA_MAP: Record<string, { lu: string, quan: string, ke: string, ji: str
   '壬': { lu: '天梁', quan: '紫微', ke: '左辅', ji: '武曲' },
   '癸': { lu: '破军', quan: '巨门', ke: '太阴', ji: '贪狼' },
 };
+
+const TOUGH_STAR_SET = new Set(['擎羊', '陀罗', '火星', '铃星', '地空', '地劫']);
+const eightCharProvider1 = new DefaultEightCharProvider();
+const eightCharProvider2 = new LunarSect2EightCharProvider();
 
 const getSiHua = (stem: string): SiHua | undefined => {
     const map = SI_HUA_MAP[stem];
@@ -92,6 +127,12 @@ const getSolarTermRange = (dateStr: string) => {
     return undefined;
 };
 
+const pad2 = (value: number) => value.toString().padStart(2, '0');
+
+const formatDateTime = (date: Date) => {
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+};
+
 const TEN_GODS: Record<string, Record<string, string>> = {
     '甲': { '甲': '比肩', '乙': '劫财', '丙': '食神', '丁': '伤官', '戊': '偏财', '己': '正财', '庚': '七杀', '辛': '正官', '壬': '偏印', '癸': '正印' },
     '乙': { '甲': '劫财', '乙': '比肩', '丙': '伤官', '丁': '食神', '戊': '正财', '己': '偏财', '庚': '正官', '辛': '七杀', '壬': '正印', '癸': '偏印' },
@@ -130,6 +171,320 @@ const HIDDEN_STEMS: Record<string, string[]> = {
   '酉': ['辛'],
   '戌': ['戊', '辛', '丁'],
   '亥': ['壬', '甲']
+};
+
+const createElementCounter = () => ({
+    '木': 0,
+    '火': 0,
+    '土': 0,
+    '金': 0,
+    '水': 0
+});
+
+const addElementCount = (counter: Record<string, number>, element: string | undefined) => {
+    if (!element) return;
+    counter[element] = (counter[element] || 0) + 1;
+};
+
+const ELEMENT_GENERATES: Record<string, string> = {
+    '木': '火',
+    '火': '土',
+    '土': '金',
+    '金': '水',
+    '水': '木'
+};
+
+const ELEMENT_CONTROLS: Record<string, string> = {
+    '木': '土',
+    '土': '水',
+    '水': '火',
+    '火': '金',
+    '金': '木'
+};
+
+const getGeneratorOf = (element: string) => {
+    return Object.keys(ELEMENT_GENERATES).find((key) => ELEMENT_GENERATES[key] === element) || '';
+};
+
+const getSelfSeat = (gan: string, zhi: string) => {
+    try {
+        return HeavenStem.fromName(gan).getTerrain(EarthBranch.fromName(zhi)).toString();
+    } catch {
+        return '';
+    }
+};
+
+const computeDayMasterStrength = (element: string, counts: BaZiFiveElementsCount) => {
+    const generator = getGeneratorOf(element);
+    const child = ELEMENT_GENERATES[element] || '';
+    const controller = ELEMENT_CONTROLS[element] || '';
+
+    const supportive = (counts.total[element] || 0) + (counts.total[generator] || 0);
+    const opposing = (counts.total[child] || 0) + (counts.total[controller] || 0);
+    const score = supportive - opposing;
+
+    let level = 'balanced';
+    if (score >= 2) level = 'strong';
+    if (score <= -2) level = 'weak';
+
+    const favorable = level === 'strong' ? [child, controller].filter(Boolean) : [element, generator].filter(Boolean);
+    const unfavorable = level === 'strong' ? [element, generator].filter(Boolean) : [child, controller].filter(Boolean);
+
+    return {
+        strength: { score, level, method: 'simple_wuxing_balance' },
+        favorable,
+        unfavorable
+    };
+};
+
+const buildFiveElementsCount = (pillars: BaZiPillar[]): BaZiFiveElementsCount => {
+    const stems = createElementCounter();
+    const branches = createElementCounter();
+    const hiddenStems = createElementCounter();
+
+    pillars.forEach((pillar) => {
+        addElementCount(stems, WU_XING_GAN[pillar.gan.char]);
+        addElementCount(branches, WU_XING_ZHI[pillar.zhi.char]);
+        pillar.zhi.hidden.forEach((hidden) => addElementCount(hiddenStems, hidden.wuxing));
+    });
+
+    const total = createElementCounter();
+    Object.keys(total).forEach((key) => {
+        total[key] = (stems[key] || 0) + (branches[key] || 0) + (hiddenStems[key] || 0);
+    });
+
+    return { stems, branches, hiddenStems, total };
+};
+
+const normalizeRelations = (
+    relationsRaw: Record<string, unknown>,
+    keyMap: Record<string, string>
+): BaZiRelations => {
+    const stems: Record<string, Record<string, unknown>> = {};
+    const branches: Record<string, Record<string, unknown>> = {};
+    const events: BaZiRelations['events'] = [];
+
+    Object.entries(relationsRaw).forEach(([key, value]) => {
+        const targetKey = keyMap[key] || key;
+        const relation = value as Record<string, any>;
+        stems[targetKey] = relation?.天干 || {};
+        branches[targetKey] = relation?.地支 || {};
+
+        const stemRelations = relation?.天干 || {};
+        Object.entries(stemRelations).forEach(([type, items]) => {
+            (items as unknown[]).forEach((item) => {
+                events?.push({ pillar: targetKey, category: 'stem', type, data: item });
+            });
+        });
+
+        const branchRelations = relation?.地支 || {};
+        Object.entries(branchRelations).forEach(([type, items]) => {
+            (items as unknown[]).forEach((item) => {
+                events?.push({ pillar: targetKey, category: 'branch', type, data: item });
+            });
+        });
+    });
+
+    return { stems, branches, raw: relationsRaw, events };
+};
+
+const buildRelations = (pillars: BaZiPillar[]): BaZiRelations | undefined => {
+    try {
+        const relationsRaw = calculateRelation({
+            '年': { 天干: pillars[0].gan.char, 地支: pillars[0].zhi.char },
+            '月': { 天干: pillars[1].gan.char, 地支: pillars[1].zhi.char },
+            '日': { 天干: pillars[2].gan.char, 地支: pillars[2].zhi.char },
+            '时': { 天干: pillars[3].gan.char, 地支: pillars[3].zhi.char },
+        });
+
+        const keyMap: Record<string, string> = { '年': 'year', '月': 'month', '日': 'day', '时': 'hour' };
+        return normalizeRelations(relationsRaw as Record<string, unknown>, keyMap);
+    } catch (e) {
+        console.warn("Failed to calculate relations", e);
+        return undefined;
+    }
+};
+
+const buildMutagenMap = (palaces: Palace[]): MutagenMap => {
+    const map: MutagenMap = { lu: [], quan: [], ke: [], ji: [] };
+    const mapKey: Record<string, keyof MutagenMap> = {
+        '禄': 'lu',
+        '权': 'quan',
+        '科': 'ke',
+        '忌': 'ji',
+        'Lu': 'lu',
+        'Quan': 'quan',
+        'Ke': 'ke',
+        'Ji': 'ji',
+    };
+
+    palaces.forEach((palace) => {
+        palace.mutagens?.forEach((mutagen) => {
+            const key = mapKey[mutagen.mutagen];
+            if (!key) return;
+            const entry: MutagenMapEntry = {
+                star: mutagen.star,
+                palaceIndex: palace.index,
+                palaceName: palace.name
+            };
+            map[key].push(entry);
+        });
+    });
+
+    return map;
+};
+
+const buildMutagenMapFromFlow = (flow: FlowLayer, sihua: SiHua): MutagenMap => {
+    const map: MutagenMap = { lu: [], quan: [], ke: [], ji: [] };
+    const addEntry = (key: keyof MutagenMap, starName: string) => {
+        if (!starName) return;
+        let foundIndex: number | null = null;
+        Object.entries(flow.palaces).forEach(([idx, stars]) => {
+            if (foundIndex !== null) return;
+            if (stars?.some((s) => s.name === starName)) {
+                foundIndex = Number(idx);
+            }
+        });
+        if (foundIndex === null) return;
+        map[key].push({
+            star: starName,
+            palaceIndex: foundIndex,
+            palaceName: flow.palaceNames[foundIndex] || ''
+        });
+    };
+
+    addEntry('lu', sihua.lu);
+    addEntry('quan', sihua.quan);
+    addEntry('ke', sihua.ke);
+    addEntry('ji', sihua.ji);
+
+    return map;
+};
+
+const buildMutagenMapFromPalaces = (palaces: Palace[], sihua: SiHua): MutagenMap => {
+    const map: MutagenMap = { lu: [], quan: [], ke: [], ji: [] };
+    const allStars = (palace: Palace) => [
+        ...palace.majorStars,
+        ...palace.minorStars,
+        ...palace.adjectiveStars,
+        ...(palace.toughStars || [])
+    ];
+    const findStarEntries = (starName: string) => {
+        const entries: MutagenMapEntry[] = [];
+        palaces.forEach((palace) => {
+            if (allStars(palace).some((star) => star.name === starName)) {
+                entries.push({
+                    star: starName,
+                    palaceIndex: palace.index,
+                    palaceName: palace.name
+                });
+            }
+        });
+        return entries;
+    };
+
+    map.lu = sihua.lu ? findStarEntries(sihua.lu) : [];
+    map.quan = sihua.quan ? findStarEntries(sihua.quan) : [];
+    map.ke = sihua.ke ? findStarEntries(sihua.ke) : [];
+    map.ji = sihua.ji ? findStarEntries(sihua.ji) : [];
+
+    return map;
+};
+
+const buildSurrounding = (palaces: Palace[], index: number): PalaceSurrounding => {
+    const getPalace = (idx: number) => palaces.find((p) => p.index === idx);
+    const trineIndices = [(index + 4) % 12, (index + 8) % 12];
+    const oppositeIndex = (index + 6) % 12;
+    const fourRectIndices = [index, oppositeIndex, ...trineIndices];
+
+    const trine = trineIndices
+        .map((idx) => getPalace(idx))
+        .filter(Boolean)
+        .map((p) => ({ index: p!.index, name: p!.name }));
+
+    const oppositePalace = getPalace(oppositeIndex);
+
+    const fourRectification = fourRectIndices
+        .map((idx) => getPalace(idx))
+        .filter(Boolean)
+        .map((p) => ({ index: p!.index, name: p!.name }));
+
+    const majorStarMap = new Map<string, Star>();
+    const mutagenMap = new Map<string, PalaceMutagen>();
+
+    fourRectIndices.forEach((idx) => {
+        const palace = getPalace(idx);
+        if (!palace) return;
+        palace.majorStars.forEach((star) => {
+            if (!majorStarMap.has(star.name)) {
+                majorStarMap.set(star.name, star);
+            }
+        });
+        palace.mutagens?.forEach((mutagen) => {
+            const key = `${mutagen.star}:${mutagen.mutagen}`;
+            if (!mutagenMap.has(key)) {
+                mutagenMap.set(key, mutagen);
+            }
+        });
+    });
+
+    return {
+        trine,
+        trinePalaces: trine,
+        opposite: {
+            index: oppositePalace?.index ?? oppositeIndex,
+            name: oppositePalace?.name ?? ''
+        },
+        oppositePalace: {
+            index: oppositePalace?.index ?? oppositeIndex,
+            name: oppositePalace?.name ?? ''
+        },
+        fourRectification,
+        fourRectificationPalaces: fourRectification,
+        majorStarsUnion: Array.from(majorStarMap.values()),
+        mutagensUnion: Array.from(mutagenMap.values())
+    };
+};
+
+const buildStarCatalog = (palaces: Palace[]): Record<string, StarCatalogEntry> => {
+    const catalog: Record<string, StarCatalogEntry> = {};
+    const typePriority: Record<Star['type'], number> = {
+        major: 1,
+        minor: 2,
+        adjective: 3,
+        other: 4
+    };
+
+    const addStar = (star: Star) => {
+        const existing = catalog[star.name];
+        const entry: StarCatalogEntry = existing || {
+            name: star.name,
+            type: star.type,
+            brightness: star.brightness,
+            isTransformable: Boolean(star.mutagen),
+            priority: typePriority[star.type] ?? 9
+        };
+
+        if (existing) {
+            entry.isTransformable = entry.isTransformable || Boolean(star.mutagen);
+            if (!entry.brightness && star.brightness) entry.brightness = star.brightness;
+            if ((typePriority[star.type] ?? 9) < (entry.priority ?? 9)) {
+                entry.type = star.type;
+                entry.priority = typePriority[star.type] ?? entry.priority;
+            }
+        }
+
+        catalog[star.name] = entry;
+    };
+
+    palaces.forEach((palace) => {
+        palace.majorStars.forEach(addStar);
+        palace.minorStars.forEach(addStar);
+        palace.adjectiveStars.forEach(addStar);
+        palace.toughStars?.forEach(addStar);
+    });
+
+    return catalog;
 };
 
 // --- Shen Sha (Gods & Evils) Helpers ---
@@ -206,6 +561,29 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
   let astrolabe: any;
   let lunarObj: any;
   let trueSolarDate: Date | null = null;
+  const solarTimeOffsetMinutes = (input.longitude - 120) * 4;
+  const providerSect: 1 | 2 = 1;
+  const dayBoundary = 'ziEarly';
+  const timezone = 'Asia/Shanghai';
+  const calendarRule = {
+      sect: providerSect,
+      dayBoundary,
+      yearPillarRule: 'li_chun',
+      monthPillarRule: 'jie_qi'
+  };
+  LunarHour.provider = calendarRule.sect === 2 ? eightCharProvider2 : eightCharProvider1;
+  const astrolabeMeta: AstrolabeMeta = {
+      ruleVersion: 'zwds-bazi-v1',
+      starCatalogVersion: 'iztro-2.5.4',
+      dataSources: {
+          iztro: '2.5.4',
+          'lunar-javascript': '1.6.13',
+          tyme4ts: '1.3.4',
+          'cantian-tymext': '0.0.21'
+      },
+      calendarRule,
+      fixLeap: true
+  };
 
   if (input.calendarType === 'lunar') {
     const dateStr = `${input.lunarYear}-${input.lunarMonth}-${input.lunarDay}`;
@@ -217,9 +595,7 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
     
     // Calculate True Solar Time for BaZi Generation
     // Beijing Time is GMT+8 (120 deg). 1 deg = 4 minutes.
-    const longitude = input.longitude || 120;
-    const offsetMinutes = (longitude - 120) * 4;
-    
+    const offsetMinutes = solarTimeOffsetMinutes;
     trueSolarDate = new Date(y, m - 1, d, input.birthHour, input.birthMinute);
     trueSolarDate.setMinutes(trueSolarDate.getMinutes() + offsetMinutes);
 
@@ -239,9 +615,7 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
     const [y, m, d] = input.solarDate.split('-').map(Number);
     
     // Calculate True Solar Time for BaZi Generation
-    const longitude = input.longitude || 120;
-    const offsetMinutes = (longitude - 120) * 4;
-    
+    const offsetMinutes = solarTimeOffsetMinutes;
     trueSolarDate = new Date(y, m - 1, d, input.birthHour, input.birthMinute);
     trueSolarDate.setMinutes(trueSolarDate.getMinutes() + offsetMinutes);
 
@@ -266,30 +640,154 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
     }));
   };
 
-  const palaces: Palace[] = astrolabe.palaces.map((p: any) => ({
-    index: p.index,
-    name: p.name,
-    isBodyPalace: p.isBodyPalace,
-    isOriginalPalace: p.isOriginalPalace,
-    heavenlyStem: p.heavenlyStem,
-    earthlyBranch: p.earthlyBranch,
-    majorStars: mapStars(p.majorStars, 'major'),
-    minorStars: mapStars(p.minorStars, 'minor'),
-    adjectiveStars: mapStars(p.adjectiveStars, 'adjective'),
-    changsheng12: p.changsheng12,
-    boshi12: p.boshi12,
-    jiangqian12: p.jiangqian12,
-    suiqian12: p.suiqian12,
-    decadal: {
-      range: `${p.decadal.range[0]} - ${p.decadal.range[1]}`,
-      heavenlyStem: p.decadal.heavenlyStem,
-      earthlyBranch: p.decadal.earthlyBranch,
-    },
-    ages: p.ages
-  }));
+  const palaces: Palace[] = astrolabe.palaces.map((p: any) => {
+    const majorStars = mapStars(p.majorStars, 'major');
+    const minorStars = mapStars(p.minorStars, 'minor');
+    const adjectiveStars = mapStars(p.adjectiveStars, 'adjective');
+    const allStars = [...majorStars, ...minorStars, ...adjectiveStars];
+    const mutagens: PalaceMutagen[] = allStars
+        .filter((star) => star.mutagen)
+        .map((star) => ({
+            star: star.name,
+            mutagen: star.mutagen || '',
+            type: star.type
+        }));
+    const toughStars = allStars.filter((star) => TOUGH_STAR_SET.has(star.name));
+
+    return {
+      index: p.index,
+      name: p.name,
+      isBodyPalace: p.isBodyPalace,
+      isOriginalPalace: p.isOriginalPalace,
+      heavenlyStem: p.heavenlyStem,
+      earthlyBranch: p.earthlyBranch,
+      stemBranch: `${p.heavenlyStem}${p.earthlyBranch}`,
+      majorStars,
+      minorStars,
+      adjectiveStars,
+      toughStars,
+      mutagens,
+      changsheng12: p.changsheng12,
+      boshi12: p.boshi12,
+      jiangqian12: p.jiangqian12,
+      suiqian12: p.suiqian12,
+      life12: p.changsheng12,
+      scholar12: p.boshi12,
+      yearFront12: p.suiqian12,
+      generalFront12: p.jiangqian12,
+      decadal: {
+        range: `${p.decadal.range[0]} - ${p.decadal.range[1]}`,
+        heavenlyStem: p.decadal.heavenlyStem,
+        earthlyBranch: p.decadal.earthlyBranch,
+      },
+      ages: p.ages
+    };
+  });
+
+  palaces.forEach((palace) => {
+      if (!palace.majorStars.length) {
+          const oppositeIndex = (palace.index + 6) % 12;
+          const opposite = palaces.find((p) => p.index === oppositeIndex);
+          palace.isEmptyPalace = true;
+          palace.borrowFromPalace = {
+              fromPalaceIndex: oppositeIndex,
+              fromPalaceName: opposite?.name || '',
+              rule: 'empty_palace_borrow_opposite',
+              ruleVersion: 'zwds-empty-palace-v1'
+          };
+          palace.borrowedMajorStars = opposite?.majorStars || [];
+      } else {
+          palace.isEmptyPalace = false;
+      }
+  });
+
+  palaces.forEach((palace) => {
+      palace.surrounding = buildSurrounding(palaces, palace.index);
+  });
+
+  const annualAgeMapping: Record<number, number> = {};
+  palaces.forEach((palace) => {
+      palace.ages?.forEach((age) => {
+          annualAgeMapping[age] = palace.index;
+      });
+  });
+
+  const originMutagenMap = buildMutagenMap(palaces);
+  const starCatalog = buildStarCatalog(palaces);
+  const decadalMapByRange = new Map<string, DecadalMutagenMap>();
+  const parseDecadalRange = (range: string) => {
+      const match = range.match(/(\d+)\s*-\s*(\d+)/);
+      if (!match) return { start: 0, end: 0 };
+      return { start: Number(match[1]), end: Number(match[2]) };
+  };
+
+  palaces.forEach((palace) => {
+      const range = palace.decadal.range;
+      if (!range || decadalMapByRange.has(range)) return;
+      const sihua = getSiHua(palace.decadal.heavenlyStem);
+      if (!sihua) return;
+      decadalMapByRange.set(range, {
+          range,
+          heavenlyStem: palace.decadal.heavenlyStem,
+          earthlyBranch: palace.decadal.earthlyBranch,
+          palaceIndex: palace.index,
+          palaceName: palace.name,
+          map: buildMutagenMapFromPalaces(palaces, sihua)
+      });
+  });
+
+  const decadalMutagenMaps = Array.from(decadalMapByRange.values()).sort((a, b) => {
+      const ra = parseDecadalRange(a.range);
+      const rb = parseDecadalRange(b.range);
+      return ra.start - rb.start;
+  });
+
+  let currentDecadal: (DecadalMutagenMap & { age?: number }) | undefined;
+  const focusDateStr = input.focusDate || new Date().toISOString().split('T')[0];
+  if (focusDateStr) {
+      const [by, bm, bd] = input.solarDate.split('-').map(Number);
+      const [fy, fm, fd] = focusDateStr.split('-').map(Number);
+      let age = fy - by;
+      if (fm < bm || (fm === bm && fd < bd)) {
+          age -= 1;
+      }
+      const entry = decadalMutagenMaps.find((m) => {
+          const range = parseDecadalRange(m.range);
+          return age >= range.start && age <= range.end;
+      });
+      if (entry) {
+          currentDecadal = { ...entry, age };
+      }
+  }
 
   let yearGZ = '', monthGZ = '', dayGZ = '', hourGZ = '';
   let baziChart: BaZiChart | undefined = undefined;
+  const lunarDateDetail = (() => {
+      if (lunarObj) {
+          const lunarYear = lunarObj.getYear();
+          const lunarMonthRaw = lunarObj.getMonth();
+          const lunarMonth = Math.abs(lunarMonthRaw);
+          const lunarDay = lunarObj.getDay();
+          const isLeapMonth = lunarMonthRaw < 0;
+          let leapMonthOfYear: number | undefined = undefined;
+          let monthDayCount: number | undefined = undefined;
+          try {
+              const lunarYearObj = LunarYear.fromYear(lunarYear);
+              leapMonthOfYear = lunarYearObj.getLeapMonth();
+              const lunarMonthObj = lunarYearObj.getMonth(lunarMonthRaw);
+              monthDayCount = lunarMonthObj?.getDayCount();
+          } catch (e) {
+              console.warn("Failed to resolve lunar month details", e);
+          }
+          return { year: lunarYear, month: lunarMonth, day: lunarDay, isLeapMonth, leapMonthOfYear, monthDayCount };
+      }
+      return {
+          year: input.lunarYear,
+          month: input.lunarMonth,
+          day: input.lunarDay,
+          isLeapMonth: input.isLeapMonth
+      };
+  })();
 
   if (lunarObj) {
       yearGZ = lunarObj.getYearInGanZhiExact ? lunarObj.getYearInGanZhiExact() : lunarObj.getYearInGanZhi();
@@ -299,17 +797,31 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
 
       try {
           const eightChar = lunarObj.getEightChar();
-          // Use Sect 1 (Standard/Traditional) to align start dates with traditional tools (usually 3 days = 1 year)
-          // Also combined with True Solar Time adjustment above for correctness.
-          eightChar.setSect(1);
+          // Align with providerSect for consistency across boundary rules.
+          eightChar.setSect(providerSect);
 
           const dayGanStr = eightChar.getDayGan(); 
           const dayMaster = dayGanStr;
           const dayMasterWuXing = WU_XING_GAN[dayMaster] || '';
           const yearZhiStr = eightChar.getYearZhi();
           const dayZhiStr = eightChar.getDayZhi();
+          const yearXun = lunarObj.getYearXunExact ? lunarObj.getYearXunExact() : lunarObj.getYearXun();
+          const monthXun = lunarObj.getMonthXunExact ? lunarObj.getMonthXunExact() : lunarObj.getMonthXun();
+          const dayXun = lunarObj.getDayXunExact ? lunarObj.getDayXunExact() : lunarObj.getDayXun();
+          const hourXun = lunarObj.getTimeXun ? lunarObj.getTimeXun() : '';
+          const yearXunKong = lunarObj.getYearXunKongExact ? lunarObj.getYearXunKongExact() : lunarObj.getYearXunKong();
+          const monthXunKong = lunarObj.getMonthXunKongExact ? lunarObj.getMonthXunKongExact() : lunarObj.getMonthXunKong();
+          const dayXunKong = lunarObj.getDayXunKongExact ? lunarObj.getDayXunKongExact() : lunarObj.getDayXunKong();
+          const hourXunKong = lunarObj.getTimeXunKong ? lunarObj.getTimeXunKong() : '';
 
-          const createPillar = (name: string, ganStr: string, zhiStr: string, nayin: string, xun: string): BaZiPillar => {
+          const createPillar = (
+              name: string,
+              ganStr: string,
+              zhiStr: string,
+              nayin: string,
+              xun: string,
+              kongwang: string
+          ): BaZiPillar => {
               const hiddenStemsList = HIDDEN_STEMS[zhiStr] || [];
               const hiddenStems = hiddenStemsList.map(hChar => ({
                   char: hChar,
@@ -324,15 +836,17 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
                       wuxing: WU_XING_GAN[ganStr] || '',
                       shishen: name !== '日柱' ? getTenGod(dayMaster, ganStr) : '日主'
                   },
+                  xun,
                   zhi: {
                       char: zhiStr,
                       wuxing: WU_XING_ZHI[zhiStr] || '',
                       hidden: hiddenStems
                   },
                   nayin,
-                  kongwang: xun,
+                  kongwang,
                   changsheng: getChangSheng(dayMaster, zhiStr),
-                  shensha: getShenSha(dayMaster, dayZhiStr, yearZhiStr, zhiStr, ganStr)
+                  shensha: getShenSha(dayMaster, dayZhiStr, yearZhiStr, zhiStr, ganStr),
+                  selfSeat: getSelfSeat(ganStr, zhiStr)
               };
           };
 
@@ -456,18 +970,129 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
               }
           }
 
-          baziChart = {
-              dayMaster,
-              dayMasterWuXing,
-              startYunAge,
-              startYunDate: startYunDateStr,
-              pillars: [
-                  createPillar('年柱', eightChar.getYearGan(), eightChar.getYearZhi(), eightChar.getYearNaYin(), eightChar.getYearXunKong()),
-                  createPillar('月柱', eightChar.getMonthGan(), eightChar.getMonthZhi(), eightChar.getMonthNaYin(), eightChar.getMonthXunKong()),
-                  createPillar('日柱', eightChar.getDayGan(), eightChar.getDayZhi(), eightChar.getDayNaYin(), eightChar.getDayXunKong()),
-                  createPillar('时柱', eightChar.getTimeGan(), eightChar.getTimeZhi(), eightChar.getTimeNaYin(), eightChar.getTimeXunKong()),
-              ],
-              daYun: daYunList
+          const pillars = [
+              createPillar('年柱', eightChar.getYearGan(), eightChar.getYearZhi(), eightChar.getYearNaYin(), yearXun, yearXunKong),
+              createPillar('月柱', eightChar.getMonthGan(), eightChar.getMonthZhi(), eightChar.getMonthNaYin(), monthXun, monthXunKong),
+              createPillar('日柱', eightChar.getDayGan(), eightChar.getDayZhi(), eightChar.getDayNaYin(), dayXun, dayXunKong),
+              createPillar('时柱', eightChar.getTimeGan(), eightChar.getTimeZhi(), eightChar.getTimeNaYin(), hourXun, hourXunKong),
+          ];
+          const fiveElementsCount = buildFiveElementsCount(pillars);
+          const relations = buildRelations(pillars);
+          const strengthInfo = computeDayMasterStrength(dayMasterWuXing, fiveElementsCount);
+          const sizhu = pillars.map((pillar) => `${pillar.gan.char}${pillar.zhi.char}`).join(' ');
+          const shenList = getShen(sizhu, input.gender === 'male' ? 1 : 0);
+          const shenSha = {
+              year: shenList?.[0] || [],
+              month: shenList?.[1] || [],
+              day: shenList?.[2] || [],
+              hour: shenList?.[3] || [],
+              ruleVersion: 'cantian-tymext@0.0.21'
+          };
+          const mergeShenSha = (base: string[], extra: string[]) => {
+              return Array.from(new Set([...(base || []), ...(extra || [])]));
+          };
+          pillars[0].shensha = mergeShenSha(pillars[0].shensha, shenSha.year);
+          pillars[1].shensha = mergeShenSha(pillars[1].shensha, shenSha.month);
+          pillars[2].shensha = mergeShenSha(pillars[2].shensha, shenSha.day);
+          pillars[3].shensha = mergeShenSha(pillars[3].shensha, shenSha.hour);
+
+          let taiYuan = '';
+          let taiXi = '';
+          let mingGong = '';
+          let shenGong = '';
+          try {
+              if (trueSolarDate) {
+                  const tymeSolarTime = SolarTime.fromYmdHms(
+                      trueSolarDate.getFullYear(),
+                      trueSolarDate.getMonth() + 1,
+                      trueSolarDate.getDate(),
+                      trueSolarDate.getHours(),
+                      trueSolarDate.getMinutes(),
+                      trueSolarDate.getSeconds()
+                  );
+                  const tymeEightChar = tymeSolarTime.getLunarHour().getEightChar();
+                  taiYuan = tymeEightChar.getFetalOrigin().toString();
+                  taiXi = tymeEightChar.getFetalBreath().toString();
+                  mingGong = tymeEightChar.getOwnSign().toString();
+                  shenGong = tymeEightChar.getBodySign().toString();
+              }
+          } catch (e) {
+              console.warn("Failed to calculate fetal/origin signs", e);
+          }
+
+          const solarTimeEnabled = Boolean(trueSolarDate);
+          const hourBranchBefore = getChineseTimeLabel(
+              calculateTimeIndex(input.birthHour, input.birthMinute, 120)
+          );
+          const hourBranchAfter = getChineseTimeLabel(
+              calculateTimeIndex(input.birthHour, input.birthMinute, input.longitude)
+          );
+          const correctedDateTime = trueSolarDate ? formatDateTime(trueSolarDate) : '';
+          const longitudeCorrectionMinutes = solarTimeOffsetMinutes;
+          const equationOfTimeMinutes: number | null = null;
+          const totalOffsetMinutes = longitudeCorrectionMinutes + (equationOfTimeMinutes ?? 0);
+          const solarDateForTerms = trueSolarDate
+              ? `${trueSolarDate.getFullYear()}-${pad2(trueSolarDate.getMonth() + 1)}-${pad2(trueSolarDate.getDate())}`
+              : input.solarDate;
+          const termRange = getSolarTermRange(solarDateForTerms);
+          const jieQiTable = lunarObj.getJieQiTable?.();
+          const liChunSolar = jieQiTable?.['立春'];
+          const liChunInfo = liChunSolar && liChunSolar.toYmdHms
+              ? { name: '立春', datetime: liChunSolar.toYmdHms() }
+              : undefined;
+
+          const baziMeta: BaZiMeta = {
+              timezone,
+              calendarRule,
+              solarTime: {
+                  timezone,
+                  enabled: solarTimeEnabled,
+                  type: 'localMeanSolarTime',
+                  longitudeCorrectionMinutes,
+                  equationOfTimeMinutes,
+                  totalOffsetMinutes,
+                  correctedDatetime: correctedDateTime,
+                  hourBranchBefore,
+                  hourBranchAfter,
+                  longitude: input.longitude,
+                  latitude: input.latitude,
+                  longitudeSource: 'input',
+                  dayBoundaryRule: calendarRule.dayBoundary
+              },
+              solarTimeEnabled,
+              shenShaRuleVersion: 'cantian-tymext@0.0.21',
+              providerSect,
+              dayBoundary,
+              solarTerms: {
+                  liChun: liChunInfo,
+                  monthStart: termRange?.start && termRange?.startName ? { name: termRange.startName, datetime: termRange.start } : undefined,
+                  monthEnd: termRange?.end && termRange?.endName ? { name: termRange.endName, datetime: termRange.end } : undefined,
+                  currentJieQi: lunarObj.getJieQi?.() || undefined
+              },
+              lunarDateDetail
+          };
+
+              baziChart = {
+                  dayMaster,
+                  dayMasterWuXing,
+                  taiYuan,
+                  taiXi,
+                  mingGong,
+                  shenGong,
+                  providerSect,
+                  dayBoundary,
+                  startYunAge,
+                  startYunDate: startYunDateStr,
+                  pillars,
+                  daYun: daYunList,
+                  fiveElementsCount,
+              relations,
+              meta: baziMeta,
+              shenSha,
+              dayMasterStrength: strengthInfo.strength,
+              favorableElements: strengthInfo.favorable,
+              unfavorableElements: strengthInfo.unfavorable,
+              analysisNotes: 'dayMasterStrength uses simple_wuxing_balance; usefulGod and pattern not computed'
           };
 
       } catch (e) {
@@ -555,16 +1180,63 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
     }
   }
 
+  if (baziChart && input.focusDate) {
+      try {
+          const [fy, fm, fd] = input.focusDate.split('-').map(Number);
+          const flowSolar = Solar.fromYmd(fy, fm, fd);
+          const flowLunar = flowSolar.getLunar();
+          const flowYear = flowLunar.getYearInGanZhiExact ? flowLunar.getYearInGanZhiExact() : flowLunar.getYearInGanZhi();
+          const flowMonth = flowLunar.getMonthInGanZhiExact ? flowLunar.getMonthInGanZhiExact() : flowLunar.getMonthInGanZhi();
+          const flowDay = flowLunar.getDayInGanZhiExact ? flowLunar.getDayInGanZhiExact() : flowLunar.getDayInGanZhi();
+
+          const flowRelationsRaw = calculateRelation({
+              '年': { 天干: baziChart.pillars[0].gan.char, 地支: baziChart.pillars[0].zhi.char },
+              '月': { 天干: baziChart.pillars[1].gan.char, 地支: baziChart.pillars[1].zhi.char },
+              '日': { 天干: baziChart.pillars[2].gan.char, 地支: baziChart.pillars[2].zhi.char },
+              '时': { 天干: baziChart.pillars[3].gan.char, 地支: baziChart.pillars[3].zhi.char },
+              '流年': { 天干: flowYear[0], 地支: flowYear[1] },
+              '流月': { 天干: flowMonth[0], 地支: flowMonth[1] }
+          });
+
+          const flowRelations = normalizeRelations(flowRelationsRaw as Record<string, unknown>, {
+              '年': 'year',
+              '月': 'month',
+              '日': 'day',
+              '时': 'hour',
+              '流年': 'flowYear',
+              '流月': 'flowMonth'
+          });
+
+          baziChart.flow = {
+              yearGanzhi: flowYear,
+              monthGanzhi: flowMonth,
+              dayGanzhi: flowDay,
+              relations: flowRelations
+          };
+      } catch (e) {
+          console.warn("Failed to calculate BaZi flow", e);
+      }
+  }
+
+  const mutagenMap = {
+      origin: originMutagenMap,
+      decadal: decadalMutagenMaps,
+      currentDecadal,
+      yearly: horoscopeData?.yearSiHua ? buildMutagenMapFromPalaces(palaces, horoscopeData.yearSiHua) : undefined,
+      monthly: horoscopeData?.monthSiHua ? buildMutagenMapFromPalaces(palaces, horoscopeData.monthSiHua) : undefined
+  };
+
   return {
     palaces,
     solarDate: astrolabe.solarDate,
     lunarDate: astrolabe.lunarDate,
     chineseDate: astrolabe.chineseDate,
+    timeIndex,
     rawDates: {
-      lunarYear: 0,
-      lunarMonth: 0,
-      lunarDay: 0,
-      isLeap: false,
+      lunarYear: lunarDateDetail.year,
+      lunarMonth: lunarDateDetail.month,
+      lunarDay: lunarDateDetail.day,
+      isLeap: lunarDateDetail.isLeapMonth,
     },
     fourPillars: {
       year: yearGZ,
@@ -583,6 +1255,10 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
     gender: input.gender === 'male' ? 'Male' : 'Female',
     originalGender: input.gender === 'male' ? '乾造' : '坤造',
     horoscope: horoscopeData,
+    mutagenMap,
+    starCatalog,
+    annualAgeMapping,
+    meta: astrolabeMeta,
     longitude: input.longitude,
     latitude: input.latitude,
     birthHour: input.birthHour,
@@ -610,6 +1286,10 @@ export const formatChartAsText = (astrolabe: Astrolabe): string => {
   let text = `【紫微斗数排盘 | Zi Wei Dou Shu Chart】\n`;
   text += `------------------------------------------------\n`;
   text += `性别 (Gender): ${astrolabe.originalGender} (${astrolabe.gender})\n`;
+  if (astrolabe.meta) {
+      const meta = astrolabe.meta;
+      text += `规则版本: ${meta.ruleVersion} | 星曜表: ${meta.starCatalogVersion || ''}\n`;
+  }
   const minuteStr = astrolabe.birthMinute !== undefined ? padZero(astrolabe.birthMinute) : '00';
   text += `阳历 (Solar):  ${astrolabe.solarDate} ${astrolabe.birthHour}:${minuteStr} (${astrolabe.time})\n`;
   text += `农历 (Lunar):  ${astrolabe.lunarDate}\n`;
@@ -617,6 +1297,9 @@ export const formatChartAsText = (astrolabe: Astrolabe): string => {
   
   if (astrolabe.bazi) {
       const b = astrolabe.bazi;
+      const shenShaByPillar = b.shenSha
+          ? [b.shenSha.year, b.shenSha.month, b.shenSha.day, b.shenSha.hour]
+          : b.pillars.map((p) => p.shensha);
       text += `------------------------------------------------\n`;
       text += `【八字命盘】\n`;
       text += `      年柱     月柱     日柱     时柱\n`;
@@ -631,8 +1314,17 @@ export const formatChartAsText = (astrolabe: Astrolabe): string => {
       text += `藏干: ${padRight(getHiddenStr(b.pillars[0]), 8)} ${padRight(getHiddenStr(b.pillars[1]), 8)} ${padRight(getHiddenStr(b.pillars[2]), 8)} ${padRight(getHiddenStr(b.pillars[3]), 8)}\n`;
       text += `纳音: ${padRight(b.pillars[0].nayin, 8)} ${padRight(b.pillars[1].nayin, 8)} ${padRight(b.pillars[2].nayin, 8)} ${padRight(b.pillars[3].nayin, 8)}\n`;
       text += `长生: ${padRight(b.pillars[0].changsheng, 8)} ${padRight(b.pillars[1].changsheng, 8)} ${padRight(b.pillars[2].changsheng, 8)} ${padRight(b.pillars[3].changsheng, 8)}\n`;
-      text += `神煞: ${padRight(b.pillars[0].shensha.join(','), 8)} ${padRight(b.pillars[1].shensha.join(','), 8)} ${padRight(b.pillars[2].shensha.join(','), 8)} ${padRight(b.pillars[3].shensha.join(','), 8)}\n`;
+      text += `神煞: ${padRight(shenShaByPillar[0].join(','), 8)} ${padRight(shenShaByPillar[1].join(','), 8)} ${padRight(shenShaByPillar[2].join(','), 8)} ${padRight(shenShaByPillar[3].join(','), 8)}\n`;
+      text += `旬:   ${padRight(b.pillars[0].xun || '', 8)} ${padRight(b.pillars[1].xun || '', 8)} ${padRight(b.pillars[2].xun || '', 8)} ${padRight(b.pillars[3].xun || '', 8)}\n`;
       text += `空亡: ${padRight(b.pillars[0].kongwang, 8)} ${padRight(b.pillars[1].kongwang, 8)} ${padRight(b.pillars[2].kongwang, 8)} ${padRight(b.pillars[3].kongwang, 8)}\n`;
+      text += `自坐: ${padRight(b.pillars[0].selfSeat || '', 8)} ${padRight(b.pillars[1].selfSeat || '', 8)} ${padRight(b.pillars[2].selfSeat || '', 8)} ${padRight(b.pillars[3].selfSeat || '', 8)}\n`;
+
+      if (b.taiYuan || b.taiXi || b.mingGong || b.shenGong) {
+          text += `胎元: ${b.taiYuan || ''}  胎息: ${b.taiXi || ''}  命宫: ${b.mingGong || ''}  身宫: ${b.shenGong || ''}\n`;
+      }
+      if (b.providerSect || b.dayBoundary) {
+          text += `口径: providerSect=${b.providerSect ?? ''} dayBoundary=${b.dayBoundary ?? ''}\n`;
+      }
       
       text += `\n【大运 (Decadal Luck)】 (起运: ${b.startYunAge}岁 ${b.startYunDate ? '| '+b.startYunDate : ''})\n`;
       b.daYun.forEach((dy, i) => {
@@ -644,7 +1336,19 @@ export const formatChartAsText = (astrolabe: Astrolabe): string => {
   if (astrolabe.longitude !== undefined) {
       let locStr = `经度 ${astrolabe.longitude}°`;
       if (astrolabe.latitude !== undefined) locStr += `, 纬度 ${astrolabe.latitude}°`;
-      text += `地点 (Loc):    ${locStr} (真太阳时 True Solar Time)\n`;
+      text += `地点 (Loc):    ${locStr}\n`;
+      const meta = astrolabe.bazi?.meta;
+      if (meta?.solarTime) {
+          const ts = meta.solarTime;
+          const typeLabel = ts.type === 'localMeanSolarTime' ? '地方平太阳时' : ts.type;
+          text += `太阳时: ${ts.correctedDatetime} | 类型 ${typeLabel} | 经度校正 ${ts.longitudeCorrectionMinutes} 分钟`;
+          if (ts.equationOfTimeMinutes !== null && ts.equationOfTimeMinutes !== undefined) {
+              text += ` | 均时差 ${ts.equationOfTimeMinutes} 分钟`;
+          }
+          text += ` | 总偏移 ${ts.totalOffsetMinutes} 分钟\n`;
+          text += `校正时辰: ${ts.hourBranchBefore} -> ${ts.hourBranchAfter}\n`;
+          text += `口径: sect=${meta.calendarRule.sect}, dayBoundary=${meta.calendarRule.dayBoundary}, yearRule=${meta.calendarRule.yearPillarRule}, monthRule=${meta.calendarRule.monthPillarRule}\n`;
+      }
   }
   
   const getPalaceInfo = (idx: number) => {
@@ -656,6 +1360,7 @@ export const formatChartAsText = (astrolabe: Astrolabe): string => {
   if (astrolabe.horoscope) {
       const h = astrolabe.horoscope;
       text += `\n【流运设定 (Flow Rules)】\n`;
+      text += `焦点日期 (Focus Date): ${h.solarDate} (UTC+8)\n`;
       text += `起法规则: 流年按立春交节(Solar Terms), 流月按节气(Solar Terms)\n`;
       text += `------------------------------------------------\n`;
       
@@ -696,6 +1401,35 @@ export const formatChartAsText = (astrolabe: Astrolabe): string => {
         text += `${padRight(branchName, 8)}| ${padRight(originalName, 10)}| ${padRight(yearName, 10)}| ${monthName}\n`;
       });
       text += `--------------------------------------------------------\n`;
+  }
+
+  const formatMutagenEntries = (entries: MutagenMapEntry[]) => {
+      if (!entries || entries.length === 0) return '--';
+      return entries.map((entry) => `${entry.star}@${entry.palaceName}`).join('、');
+  };
+
+  if (astrolabe.mutagenMap?.origin) {
+      text += `\n【四化落点 (Mutagen Map)】\n`;
+      const origin = astrolabe.mutagenMap.origin;
+      text += `本命: 禄-${formatMutagenEntries(origin.lu)} 权-${formatMutagenEntries(origin.quan)} 科-${formatMutagenEntries(origin.ke)} 忌-${formatMutagenEntries(origin.ji)}\n`;
+      if (astrolabe.mutagenMap.decadal?.length) {
+          const currentRange = astrolabe.mutagenMap.currentDecadal?.range;
+          const currentAge = astrolabe.mutagenMap.currentDecadal?.age;
+          astrolabe.mutagenMap.decadal.forEach((decadal) => {
+              const map = decadal.map;
+              const marker = decadal.range === currentRange ? '*' : '';
+              const ageInfo = decadal.range === currentRange && currentAge !== undefined ? ` 年龄${currentAge}` : '';
+              text += `大限${marker}(${decadal.range}${ageInfo}): 禄-${formatMutagenEntries(map.lu)} 权-${formatMutagenEntries(map.quan)} 科-${formatMutagenEntries(map.ke)} 忌-${formatMutagenEntries(map.ji)}\n`;
+          });
+      }
+      if (astrolabe.mutagenMap.yearly) {
+          const yearly = astrolabe.mutagenMap.yearly;
+          text += `流年: 禄-${formatMutagenEntries(yearly.lu)} 权-${formatMutagenEntries(yearly.quan)} 科-${formatMutagenEntries(yearly.ke)} 忌-${formatMutagenEntries(yearly.ji)}\n`;
+      }
+      if (astrolabe.mutagenMap.monthly) {
+          const monthly = astrolabe.mutagenMap.monthly;
+          text += `流月: 禄-${formatMutagenEntries(monthly.lu)} 权-${formatMutagenEntries(monthly.quan)} 科-${formatMutagenEntries(monthly.ke)} 忌-${formatMutagenEntries(monthly.ji)}\n`;
+      }
   }
 
   text += `\n`;
@@ -755,6 +1489,16 @@ export const formatChartAsText = (astrolabe: Astrolabe): string => {
     text += `  主星 (Major): ${major || '--'}\n`;
     text += `  辅星 (Minor): ${minor || '--'}\n`;
     text += `  杂曜 (Mini):  ${adjective || '--'}\n`; 
+    if (p.isEmptyPalace && p.borrowFromPalace) {
+        const borrowed = (p.borrowedMajorStars || []).map(formatStar).join('  ');
+        text += `  空宫借星: 对宫 ${p.borrowFromPalace.fromPalaceName} | 主星 ${borrowed || '--'}\n`;
+    }
+    if (p.surrounding) {
+        const trines = p.surrounding.trinePalaces || p.surrounding.trine;
+        const opposite = p.surrounding.oppositePalace || p.surrounding.opposite;
+        const fourRect = p.surrounding.fourRectificationPalaces || p.surrounding.fourRectification;
+        text += `  三方四正: 对宫 ${opposite.name} | 三方 ${trines.map(t => t.name).join('、')} | 四正 ${fourRect.map(t => t.name).join('、')}\n`;
+    }
 
     if (astrolabe.horoscope) {
         const mStars = astrolabe.horoscope.month.palaces[p.index] || [];
