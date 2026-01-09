@@ -19,10 +19,10 @@ const ChevronDownIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none
 const PalaceModal = ({ palace, onClose }: { palace: Palace; onClose: () => void }) => {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
-                <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-800/50 flex-shrink-0">
+            <div className="glass glass-strong rounded-xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+                <div className="p-4 border-b border-slate-800/70 flex justify-between items-center bg-slate-900/60 flex-shrink-0">
                     <div>
-                        <h3 className="text-xl font-serif-sc text-purple-200">{palace.name} <span className="text-sm text-slate-400">({palace.heavenlyStem}{palace.earthlyBranch})</span></h3>
+                        <h3 className="text-xl font-serif-sc text-amber-200">{palace.name} <span className="text-sm text-slate-400">({palace.heavenlyStem}{palace.earthlyBranch})</span></h3>
                         <p className="text-xs text-slate-500">
                            大限 {palace.decadal.range} | 宫干 {palace.heavenlyStem}
                         </p>
@@ -47,7 +47,7 @@ const PalaceModal = ({ palace, onClose }: { palace: Palace; onClose: () => void 
                         <h4 className="text-xs uppercase tracking-wider text-slate-500 mb-2">辅星</h4>
                         <div className="flex flex-wrap gap-2">
                             {palace.minorStars.length > 0 ? palace.minorStars.map((s, i) => (
-                                <span key={i} className="flex items-center gap-1 px-2 py-1 bg-purple-900/20 border border-purple-900/50 rounded text-purple-300 text-sm">
+                                <span key={i} className="flex items-center gap-1 px-2 py-1 bg-sky-900/20 border border-sky-900/50 rounded text-sky-300 text-sm">
                                     {s.name} <span className="text-xs opacity-60 font-normal">{s.brightness}</span>
                                 </span>
                             )) : <span className="text-slate-600 text-sm">无</span>}
@@ -149,34 +149,38 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans p-4 md:p-8 pb-32">
+    <div className="app-shell min-h-screen text-slate-100 font-ui px-4 md:px-8 pb-32 pt-6">
         <div className="max-w-6xl mx-auto">
             {/* Header */}
-            <header className="mb-6 md:mb-8 text-center">
-                <h1 className="text-3xl md:text-4xl font-serif-sc font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-300 mb-2">
+            <header className="mb-8 md:mb-10 text-center relative animate-fade-in">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 text-[10px] uppercase tracking-[0.2em]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse"></span>
+                    命理实验室
+                </div>
+                <h1 className="mt-4 text-3xl md:text-5xl font-serif-sc font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-emerald-300 to-sky-300 mb-2">
                     Iztro 命理探索
                 </h1>
-                <p className="text-slate-500 text-sm">紫微斗数 · 八字排盘 · AI解读</p>
+                <p className="text-slate-400 text-sm">紫微斗数 · 八字排盘 · AI解读</p>
             </header>
 
             {/* Controls */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-lg mb-8 overflow-hidden transition-all duration-300">
+            <div className="glass rounded-2xl mb-8 overflow-hidden transition-all duration-300">
                 <div 
                     className={`p-6 ${isFormCollapsed ? 'hidden md:block' : 'block'}`}
                 >
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         {/* Date Type Toggle & Date Input */}
                         <div className="space-y-4">
-                            <div className="flex bg-slate-800 p-1 rounded-lg w-full">
+                            <div className="flex bg-slate-900/70 p-1 rounded-lg w-full border border-slate-700/60">
                                 <button 
                                     onClick={() => handleInputChange('calendarType', 'solar')}
-                                    className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-md text-sm transition-all ${input.calendarType === 'solar' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-md text-sm transition-all ${input.calendarType === 'solar' ? 'bg-emerald-500/20 text-emerald-100 shadow-sm shadow-emerald-900/30' : 'text-slate-400 hover:text-slate-200'}`}
                                 >
                                     <SunIcon /> 阳历
                                 </button>
                                 <button 
                                     onClick={() => handleInputChange('calendarType', 'lunar')}
-                                    className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-md text-sm transition-all ${input.calendarType === 'lunar' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-md text-sm transition-all ${input.calendarType === 'lunar' ? 'bg-emerald-500/20 text-emerald-100 shadow-sm shadow-emerald-900/30' : 'text-slate-400 hover:text-slate-200'}`}
                                 >
                                     <MoonIcon /> 农历
                                 </button>
@@ -189,22 +193,22 @@ export default function App() {
                                         type="date" 
                                         value={input.solarDate}
                                         onChange={(e) => handleInputChange('solarDate', e.target.value)}
-                                        className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm focus:border-purple-500 outline-none w-full"
+                                        className="input-field px-3 py-2 text-sm w-full"
                                     />
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-3 gap-2">
                                     <div>
                                         <label className="text-xs text-slate-500 mb-1">年</label>
-                                        <input type="number" value={input.lunarYear} onChange={(e) => handleInputChange('lunarYear', parseInt(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-2 text-sm" />
+                                        <input type="number" value={input.lunarYear} onChange={(e) => handleInputChange('lunarYear', parseInt(e.target.value))} className="input-field w-full px-2 py-2 text-sm" />
                                     </div>
                                     <div>
                                         <label className="text-xs text-slate-500 mb-1">月</label>
-                                        <input type="number" value={input.lunarMonth} onChange={(e) => handleInputChange('lunarMonth', parseInt(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-2 text-sm" />
+                                        <input type="number" value={input.lunarMonth} onChange={(e) => handleInputChange('lunarMonth', parseInt(e.target.value))} className="input-field w-full px-2 py-2 text-sm" />
                                     </div>
                                     <div>
                                         <label className="text-xs text-slate-500 mb-1">日</label>
-                                        <input type="number" value={input.lunarDay} onChange={(e) => handleInputChange('lunarDay', parseInt(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-2 text-sm" />
+                                        <input type="number" value={input.lunarDay} onChange={(e) => handleInputChange('lunarDay', parseInt(e.target.value))} className="input-field w-full px-2 py-2 text-sm" />
                                     </div>
                                     <div className="col-span-3 flex items-center gap-2 mt-1">
                                         <input type="checkbox" id="leap" checked={input.isLeapMonth} onChange={(e) => handleInputChange('isLeapMonth', e.target.checked)} className="rounded bg-slate-800 border-slate-700" />
@@ -224,7 +228,7 @@ export default function App() {
                                         min="0" max="23"
                                         value={input.birthHour}
                                         onChange={(e) => handleInputChange('birthHour', parseInt(e.target.value))}
-                                        className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm focus:border-purple-500 outline-none"
+                                        className="input-field w-full px-3 py-2 text-sm"
                                     />
                                 </div>
                                 <div>
@@ -234,7 +238,7 @@ export default function App() {
                                         min="0" max="59"
                                         value={input.birthMinute}
                                         onChange={(e) => handleInputChange('birthMinute', parseInt(e.target.value))}
-                                        className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm focus:border-purple-500 outline-none"
+                                        className="input-field w-full px-3 py-2 text-sm"
                                     />
                                 </div>
                             </div>
@@ -242,11 +246,11 @@ export default function App() {
                                 <label className="text-xs text-slate-500 mb-1">性别</label>
                                 <div className="flex gap-4">
                                     <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" name="gender" checked={input.gender === 'male'} onChange={() => handleInputChange('gender', 'male')} className="text-purple-500 focus:ring-purple-500 bg-slate-800 border-slate-700" />
+                                        <input type="radio" name="gender" checked={input.gender === 'male'} onChange={() => handleInputChange('gender', 'male')} className="text-emerald-400 focus:ring-emerald-400 bg-slate-800 border-slate-700" />
                                         <span className="text-sm">男 (乾造)</span>
                                     </label>
                                     <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" name="gender" checked={input.gender === 'female'} onChange={() => handleInputChange('gender', 'female')} className="text-purple-500 focus:ring-purple-500 bg-slate-800 border-slate-700" />
+                                        <input type="radio" name="gender" checked={input.gender === 'female'} onChange={() => handleInputChange('gender', 'female')} className="text-emerald-400 focus:ring-emerald-400 bg-slate-800 border-slate-700" />
                                         <span className="text-sm">女 (坤造)</span>
                                     </label>
                                 </div>
@@ -263,7 +267,7 @@ export default function App() {
                                         step="0.0001"
                                         value={input.longitude}
                                         onChange={(e) => handleInputChange('longitude', parseFloat(e.target.value))}
-                                        className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm focus:border-purple-500 outline-none"
+                                        className="input-field w-full px-3 py-2 text-sm"
                                     />
                                 </div>
                                 <div>
@@ -273,7 +277,7 @@ export default function App() {
                                         step="0.0001"
                                         value={input.latitude || 0}
                                         onChange={(e) => handleInputChange('latitude', parseFloat(e.target.value))}
-                                        className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm focus:border-purple-500 outline-none"
+                                        className="input-field w-full px-3 py-2 text-sm"
                                     />
                                 </div>
                             </div>
@@ -290,12 +294,12 @@ export default function App() {
                                     type="date"
                                     value={input.focusDate}
                                     onChange={(e) => handleInputChange('focusDate', e.target.value)}
-                                    className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm focus:border-purple-500 outline-none"
+                                    className="input-field w-full px-3 py-2 text-sm"
                                 />
                             </div>
                             <button 
                                 onClick={handleCalculate}
-                                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold py-2.5 rounded-lg shadow-lg shadow-purple-900/20 transition-all active:scale-95"
+                                className="w-full btn-primary font-bold py-2.5 rounded-lg transition-all active:scale-95"
                             >
                                 排盘
                             </button>
@@ -306,7 +310,7 @@ export default function App() {
                 {/* Collapse Toggle (Mobile Only) */}
                 {astrolabe && (
                      <div 
-                        className="md:hidden flex justify-center py-2 bg-slate-800/50 border-t border-slate-800 cursor-pointer hover:bg-slate-800"
+                        className="md:hidden flex justify-center py-2 bg-slate-900/60 border-t border-slate-800/60 cursor-pointer hover:bg-slate-900/80"
                         onClick={() => setIsFormCollapsed(!isFormCollapsed)}
                      >
                          {isFormCollapsed ? (
@@ -322,23 +326,23 @@ export default function App() {
                 {astrolabe && (
                     <div className="space-y-4 md:space-y-6 animate-fade-in">
                         {/* Toolbar - Sticky on Mobile */}
-                        <div className="sticky top-0 z-30 md:static -mx-4 px-4 py-3 md:mx-0 md:p-3 md:rounded-lg bg-slate-950/90 backdrop-blur-md md:bg-slate-900/50 border-b md:border border-slate-800 shadow-xl md:shadow-none flex flex-col md:flex-row justify-between items-center gap-3 transition-all">
+                        <div className="sticky top-0 z-30 md:static -mx-4 px-4 py-3 md:mx-0 md:p-3 md:rounded-lg glass-soft border-b md:border border-slate-800/60 shadow-xl md:shadow-none flex flex-col md:flex-row justify-between items-center gap-3 transition-all">
                             <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-start">
                                 <h2 className="text-sm md:text-lg font-serif-sc text-slate-300">
                                     {astrolabe.fourPillars.year}年 {astrolabe.fourPillars.month}月 {astrolabe.fourPillars.day}日
                                 </h2>
                                 
                                 {/* Tabs */}
-                                <div className="flex bg-slate-800/80 p-1 rounded-lg">
+                                <div className="flex bg-slate-900/70 p-1 rounded-lg border border-slate-700/60">
                                     <button 
                                         onClick={() => setActiveTab('zwds')}
-                                        className={`px-3 py-1 text-xs rounded-md transition-all ${activeTab === 'zwds' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                                        className={`px-3 py-1 text-xs rounded-md transition-all ${activeTab === 'zwds' ? 'bg-emerald-500/20 text-emerald-100 shadow-sm shadow-emerald-900/30' : 'text-slate-400 hover:text-slate-200'}`}
                                     >
                                         紫微斗数
                                     </button>
                                     <button 
                                         onClick={() => setActiveTab('bazi')}
-                                        className={`px-3 py-1 text-xs rounded-md transition-all ${activeTab === 'bazi' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                                        className={`px-3 py-1 text-xs rounded-md transition-all ${activeTab === 'bazi' ? 'bg-emerald-500/20 text-emerald-100 shadow-sm shadow-emerald-900/30' : 'text-slate-400 hover:text-slate-200'}`}
                                     >
                                         八字排盘
                                     </button>
@@ -346,13 +350,13 @@ export default function App() {
                             </div>
                             
                             <div className="flex gap-2 md:gap-3 w-full md:w-auto justify-end">
-                                <button onClick={handleCopy} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs md:text-sm text-slate-300 transition-colors border border-slate-700">
+                                <button onClick={handleCopy} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/70 hover:bg-slate-800 rounded text-xs md:text-sm text-slate-200 transition-colors border border-slate-700/60">
                                     <CopyIcon /> <span className="hidden md:inline">复制</span>
                                 </button>
                                 <button 
                                     onClick={handleAnalyze} 
                                     disabled={isAnalyzing}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-900/50 hover:bg-indigo-900/80 border border-indigo-700/50 rounded text-xs md:text-sm text-indigo-300 transition-colors disabled:opacity-50"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-900/40 hover:bg-emerald-900/70 border border-emerald-500/40 rounded text-xs md:text-sm text-emerald-200 transition-colors disabled:opacity-50"
                                 >
                                     <SparklesIcon /> {isAnalyzing ? '分析中...' : 'AI 解读'}
                                 </button>
@@ -368,13 +372,13 @@ export default function App() {
 
                         {/* Analysis Result */}
                         {analysis && (
-                            <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 md:p-8 shadow-2xl relative overflow-hidden mt-4">
-                                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-indigo-500"></div>
+                            <div className="glass glass-strong rounded-xl p-6 md:p-8 shadow-2xl relative overflow-hidden mt-4">
+                                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 via-amber-400 to-sky-400"></div>
                                 <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
                                     <SparklesIcon /> AI 命理分析
                                 </h3>
-                                <div className="prose prose-invert prose-purple max-w-none">
-                                    <pre className="whitespace-pre-wrap font-sans text-slate-300 text-sm md:text-base leading-relaxed">
+                                <div className="max-w-none">
+                                    <pre className="whitespace-pre-wrap font-ui text-slate-300 text-sm md:text-base leading-relaxed">
                                         {analysis}
                                     </pre>
                                 </div>

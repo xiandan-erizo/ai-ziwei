@@ -69,8 +69,8 @@ const GridMap: React.FC<GridMapProps> = ({ astrolabe, onPalaceClick }) => {
   };
 
   const CenterInfo = () => (
-    <div className="col-span-2 row-span-2 flex flex-col justify-center items-center text-center p-4 bg-slate-900/50 border border-slate-700 rounded-lg backdrop-blur-sm m-2">
-       <h2 className="text-2xl font-serif-sc font-bold text-yellow-500 mb-2">紫微斗数</h2>
+    <div className="col-span-2 row-span-2 flex flex-col justify-center items-center text-center p-4 glass-soft rounded-lg m-2">
+       <h2 className="text-2xl font-serif-sc font-bold text-amber-300 mb-2 animate-float">紫微斗数</h2>
        <div className="text-sm space-y-1 text-slate-300">
          <p><span className="text-slate-500">性别:</span> {astrolabe.originalGender}</p>
          <p><span className="text-slate-500">农历:</span> {astrolabe.lunarDate}</p>
@@ -82,7 +82,7 @@ const GridMap: React.FC<GridMapProps> = ({ astrolabe, onPalaceClick }) => {
   );
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 md:grid-rows-4 gap-0 w-full max-w-5xl mx-auto aspect-[1/2] md:aspect-square shadow-2xl bg-slate-950">
+    <div className="grid grid-cols-1 md:grid-cols-4 md:grid-rows-4 gap-0 w-full max-w-5xl mx-auto aspect-[1/2] md:aspect-square shadow-2xl glass rounded-2xl overflow-hidden">
         <div className="hidden md:contents">
             {Array.from({ length: 16 }).map((_, i) => {
                 if (i === 5) return <CenterInfo key="center" />;
@@ -92,8 +92,8 @@ const GridMap: React.FC<GridMapProps> = ({ astrolabe, onPalaceClick }) => {
         </div>
 
         <div className="md:hidden flex flex-col gap-2 p-2">
-            <div className="bg-slate-800 p-4 rounded text-center mb-2">
-                <h3 className="text-yellow-400 text-lg font-bold">命盘概要</h3>
+            <div className="glass-soft p-4 rounded text-center mb-2">
+                <h3 className="text-amber-300 text-lg font-bold">命盘概要</h3>
                 <p className="text-sm text-slate-300">{astrolabe.lunarDate} | {astrolabe.fiveElementsClass}</p>
             </div>
             <div className="grid grid-cols-2 gap-2">

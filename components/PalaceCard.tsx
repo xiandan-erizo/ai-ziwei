@@ -31,8 +31,8 @@ const StarBadge: React.FC<StarBadgeProps> = ({ star, isMajor, isFlow, yearSiHua,
     else if (star.mutagen === '忌') mutagenColor = "text-red-500 bg-red-900/30 border-red-700";
 
     const baseColor = isFlow 
-        ? "text-amber-400" 
-        : (isMajor ? "text-red-300" : "text-purple-300");
+        ? "text-amber-300" 
+        : (isMajor ? "text-red-300" : "text-sky-300");
 
     // Flow Si Hua Badges
     const renderFlowBadge = (type: string, label: string, colorClass: string) => (
@@ -92,9 +92,9 @@ const PalaceCard: React.FC<PalaceCardProps> = ({
       onClick={onClick}
       className={`
         relative flex flex-col h-full p-1.5 md:p-2 border border-slate-700 
-        hover:border-purple-400 hover:bg-slate-800 active:scale-[0.98] transition-all cursor-pointer 
+        hover:border-emerald-400 hover:bg-slate-800 active:scale-[0.98] transition-all cursor-pointer 
         min-h-[160px] overflow-hidden group
-        ${highlight ? 'bg-slate-800/80 ring-1 ring-purple-500' : 'bg-slate-900'}
+        ${highlight ? 'bg-slate-800/80 ring-1 ring-emerald-400' : 'bg-slate-900'}
       `}
     >
       {/* Header */}
@@ -177,7 +177,7 @@ const PalaceCard: React.FC<PalaceCardProps> = ({
          </div>
          <div className="col-span-2 flex justify-between border-t border-slate-800/50 mt-0.5 pt-0.5">
              <span>{palace.suiqian12} / {palace.jiangqian12}</span>
-             <span className="font-mono text-purple-400">{palace.decadal.range}</span>
+             <span className="font-mono text-amber-300">{palace.decadal.range}</span>
          </div>
       </div>
     </div>

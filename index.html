@@ -1,19 +1,123 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Iztro ZWDS Explorer</title>
+    <title>Iztro 命理探索</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
+      :root {
+        color-scheme: dark;
+        --ink-950: #0a0d12;
+        --ink-900: #0f172a;
+        --ink-800: #111827;
+        --mist-100: #e2e8f0;
+        --mist-300: #94a3b8;
+        --jade-300: #5eead4;
+        --jade-500: #14b8a6;
+        --amber-300: #fcd34d;
+        --amber-500: #f59e0b;
+        --sky-300: #7dd3fc;
+        --rose-300: #fda4af;
+      }
       body {
-        font-family: 'Inter', sans-serif;
-        background-color: #0f172a; /* Slate 900 */
-        color: #e2e8f0; /* Slate 200 */
+        font-family: 'Sora', sans-serif;
+        background-color: var(--ink-950);
+        color: var(--mist-100);
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          radial-gradient(1px 1px at 10% 20%, rgba(255,255,255,0.16) 0, transparent 40%),
+          radial-gradient(1px 1px at 80% 30%, rgba(255,255,255,0.14) 0, transparent 35%),
+          radial-gradient(2px 2px at 60% 70%, rgba(255,255,255,0.12) 0, transparent 45%);
+        opacity: 0.35;
+        mix-blend-mode: screen;
+        z-index: 0;
+      }
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(60rem 40rem at 10% -10%, rgba(94, 234, 212, 0.16), transparent 60%),
+          radial-gradient(50rem 30rem at 90% 10%, rgba(251, 191, 36, 0.14), transparent 55%),
+          radial-gradient(40rem 30rem at 50% 120%, rgba(56, 189, 248, 0.12), transparent 60%);
+        z-index: 0;
+      }
+      .app-shell {
+        position: relative;
+        z-index: 1;
       }
       .font-serif-sc {
         font-family: 'Noto Serif SC', serif;
+      }
+      .font-ui {
+        font-family: 'Sora', sans-serif;
+      }
+      .glass {
+        background: rgba(15, 23, 42, 0.72);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        box-shadow: 0 20px 55px rgba(2, 6, 23, 0.55);
+        backdrop-filter: blur(12px);
+      }
+      .glass-strong {
+        background: rgba(15, 23, 42, 0.9);
+        border-color: rgba(148, 163, 184, 0.26);
+      }
+      .glass-soft {
+        background: rgba(2, 6, 23, 0.5);
+        border: 1px solid rgba(148, 163, 184, 0.12);
+        backdrop-filter: blur(8px);
+      }
+      .input-field {
+        background: rgba(2, 6, 23, 0.65);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        color: var(--mist-100);
+        border-radius: 0.5rem;
+      }
+      .input-field:focus {
+        border-color: var(--jade-300);
+        box-shadow: 0 0 0 2px rgba(94, 234, 212, 0.2);
+        outline: none;
+      }
+      .btn-primary {
+        background: linear-gradient(135deg, rgba(20, 184, 166, 0.95), rgba(245, 158, 11, 0.95));
+        color: #071015;
+        box-shadow: 0 12px 30px rgba(20, 184, 166, 0.25), 0 12px 30px rgba(245, 158, 11, 0.2);
+      }
+      .btn-primary:hover {
+        filter: brightness(1.05);
+      }
+      .no-scrollbar::-webkit-scrollbar,
+      .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar,
+      .scrollbar-hide {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      @keyframes fade-in {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes float-slow {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-6px); }
+      }
+      .animate-fade-in {
+        animation: fade-in 0.5s ease-out both;
+      }
+      .animate-float {
+        animation: float-slow 8s ease-in-out infinite;
       }
       /* Custom scrollbar for better aesthetics in dark mode */
       ::-webkit-scrollbar {
