@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { calculateAstrolabe, formatChartAsText } from './services/iztroService';
-import { analyzeChart } from './services/geminiService';
+import { analyzeChart } from './services/openaiService';
 import { Astrolabe, Palace, UserInput } from './types';
 import GridMap from './components/GridMap';
 import BaZiChart from './components/BaZiChart';

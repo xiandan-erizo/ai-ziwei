@@ -1,5 +1,6 @@
 import { astro } from 'iztro';
 import { Solar, Lunar } from 'lunar-javascript';
+import { ChildLimit, Gender, SolarTime } from 'tyme4ts';
 import { Astrolabe, Palace, Star, UserInput, FlowLayer, Horoscope, SiHua, BaZiChart, BaZiPillar, BaZiDaYun } from '../types';
 
 // Calculate Time Index (0-11) based on True Solar Time
@@ -204,6 +205,7 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
   const timeIndex = calculateTimeIndex(input.birthHour, input.birthMinute, input.longitude);
   let astrolabe: any;
   let lunarObj: any;
+  let trueSolarDate: Date | null = null;
 
   if (input.calendarType === 'lunar') {
     const dateStr = `${input.lunarYear}-${input.lunarMonth}-${input.lunarDay}`;
@@ -218,7 +220,7 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
     const longitude = input.longitude || 120;
     const offsetMinutes = (longitude - 120) * 4;
     
-    const trueSolarDate = new Date(y, m - 1, d, input.birthHour, input.birthMinute);
+    trueSolarDate = new Date(y, m - 1, d, input.birthHour, input.birthMinute);
     trueSolarDate.setMinutes(trueSolarDate.getMinutes() + offsetMinutes);
 
     const solarObj = Solar.fromYmdHms(
@@ -240,7 +242,7 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
     const longitude = input.longitude || 120;
     const offsetMinutes = (longitude - 120) * 4;
     
-    const trueSolarDate = new Date(y, m - 1, d, input.birthHour, input.birthMinute);
+    trueSolarDate = new Date(y, m - 1, d, input.birthHour, input.birthMinute);
     trueSolarDate.setMinutes(trueSolarDate.getMinutes() + offsetMinutes);
 
     const solarObj = Solar.fromYmdHms(
@@ -334,56 +336,124 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
               };
           };
 
-          const yun = eightChar.getYun(input.gender === 'male' ? 1 : 0);
-          const daYunArr = yun.getDaYun();
           const daYunList: BaZiDaYun[] = [];
-          
           let startYunAge = 0;
           let startYunDateStr = '';
 
-          if (daYunArr && daYunArr.length > 0) {
-              startYunAge = daYunArr[0].getStartAge();
-              // Calculate specific start date
-              const startSolar = yun.getStartSolar();
-              startYunDateStr = startSolar.toYmd();
+          const padYmd = (value: number) => value.toString().padStart(2, '0');
+          const formatYmd = (year: number, month: number, day: number) => {
+              return `${year}-${padYmd(month)}-${padYmd(day)}`;
+          };
+
+          try {
+              if (trueSolarDate) {
+                  const solarTime = SolarTime.fromYmdHms(
+                      trueSolarDate.getFullYear(),
+                      trueSolarDate.getMonth() + 1,
+                      trueSolarDate.getDate(),
+                      trueSolarDate.getHours(),
+                      trueSolarDate.getMinutes(),
+                      trueSolarDate.getSeconds()
+                  );
+                  const gender = input.gender === 'male' ? Gender.MAN : Gender.WOMAN;
+                  const childLimit = ChildLimit.fromSolarTime(solarTime, gender);
+                  let decadeFortune = childLimit.getStartDecadeFortune();
+                  startYunAge = decadeFortune.getStartAge();
+
+                  const startTime = childLimit.getEndTime();
+                  startYunDateStr = formatYmd(startTime.getYear(), startTime.getMonth(), startTime.getDay());
+
+                  for (let i = 0; i < 10; i++) {
+                      const startAge = decadeFortune.getStartAge();
+                      if (startAge > 110) break;
+
+                      const gz = decadeFortune.getSixtyCycle().toString();
+                      if (!gz || gz.length < 2) {
+                          decadeFortune = decadeFortune.next(1);
+                          continue;
+                      }
+
+                      const ganChar = gz.charAt(0);
+                      const zhiChar = gz.charAt(1);
+
+                      const hiddenStemsList = HIDDEN_STEMS[zhiChar] || [];
+                      const hiddenStems = hiddenStemsList.map(hChar => ({
+                          char: hChar,
+                          wuxing: WU_XING_GAN[hChar] || '',
+                          shishen: getTenGod(dayMaster, hChar)
+                      }));
+
+                      daYunList.push({
+                          startAge: startAge,
+                          endAge: decadeFortune.getEndAge(),
+                          startYear: decadeFortune.getStartSixtyCycleYear().getYear(),
+                          endYear: decadeFortune.getEndSixtyCycleYear().getYear(),
+                          gan: {
+                              char: ganChar,
+                              wuxing: WU_XING_GAN[ganChar] || '',
+                              shishen: getTenGod(dayMaster, ganChar)
+                          },
+                          zhi: {
+                              char: zhiChar,
+                              wuxing: WU_XING_ZHI[zhiChar] || '',
+                              shishen: '',
+                              hidden: hiddenStems
+                          }
+                      });
+
+                      decadeFortune = decadeFortune.next(1);
+                  }
+              }
+          } catch (e) {
+              console.warn("Tyme4ts DaYun calculation failed, falling back to lunar-javascript", e);
           }
 
-          for (let i = 0; i < daYunArr.length; i++) {
-            const dy = daYunArr[i];
-            const startAge = dy.getStartAge();
-            if (startAge > 110) break;
-            
-            const gz = dy.getGanZhi(); 
-            if (!gz || gz.length < 2) continue; // Skip invalid entries
+          if (daYunList.length === 0) {
+              const yun = eightChar.getYun(input.gender === 'male' ? 1 : 0);
+              const daYunArr = yun.getDaYun() || [];
 
-            const ganChar = gz.charAt(0);
-            const zhiChar = gz.charAt(1);
+              if (daYunArr.length > 0) {
+                  startYunAge = daYunArr[0].getStartAge();
+                  const startSolar = yun.getStartSolar();
+                  startYunDateStr = startSolar.toYmd();
+              }
 
-            // Hidden Stems for Da Yun Branch
-            const hiddenStemsList = HIDDEN_STEMS[zhiChar] || [];
-            const hiddenStems = hiddenStemsList.map(hChar => ({
-                char: hChar,
-                wuxing: WU_XING_GAN[hChar] || '',
-                shishen: getTenGod(dayMaster, hChar)
-            }));
+              for (let i = 0; i < daYunArr.length; i++) {
+                  const dy = daYunArr[i];
+                  const startAge = dy.getStartAge();
+                  if (startAge > 110) break;
 
-            daYunList.push({
-                startAge: startAge,
-                endAge: dy.getEndAge(),
-                startYear: dy.getStartYear(),
-                endYear: dy.getEndYear(),
-                gan: {
-                    char: ganChar,
-                    wuxing: WU_XING_GAN[ganChar] || '',
-                    shishen: getTenGod(dayMaster, ganChar)
-                },
-                zhi: {
-                    char: zhiChar,
-                    wuxing: WU_XING_ZHI[zhiChar] || '',
-                    shishen: '',
-                    hidden: hiddenStems
-                }
-            });
+                  const gz = dy.getGanZhi();
+                  if (!gz || gz.length < 2) continue;
+
+                  const ganChar = gz.charAt(0);
+                  const zhiChar = gz.charAt(1);
+
+                  const hiddenStemsList = HIDDEN_STEMS[zhiChar] || [];
+                  const hiddenStems = hiddenStemsList.map(hChar => ({
+                      char: hChar,
+                      wuxing: WU_XING_GAN[hChar] || '',
+                      shishen: getTenGod(dayMaster, hChar)
+                  }));
+
+                  daYunList.push({
+                      startAge: startAge,
+                      endAge: dy.getEndAge(),
+                      startYear: dy.getStartYear(),
+                      endYear: dy.getEndYear(),
+                      gan: {
+                          char: ganChar,
+                          wuxing: WU_XING_GAN[ganChar] || '',
+                          shishen: getTenGod(dayMaster, ganChar)
+                      },
+                      zhi: {
+                          char: zhiChar,
+                          wuxing: WU_XING_ZHI[zhiChar] || '',
+                          shishen: '',
+                          hidden: hiddenStems
+                      }
+                  });
+              }
           }
 
           baziChart = {
