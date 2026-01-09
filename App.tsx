@@ -141,11 +141,39 @@ export default function App() {
       setIsAnalyzing(false);
   };
 
-  const handleCopy = () => {
+  const copyToClipboard = async (text: string) => {
+      const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+      if (clipboard && typeof clipboard.writeText === 'function') {
+          try {
+              await clipboard.writeText(text);
+              return true;
+          } catch (e) {
+              console.warn('clipboard.writeText failed, falling back to execCommand', e);
+          }
+      }
+      if (typeof document === 'undefined') return false;
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return ok;
+  };
+
+  const handleCopy = async () => {
       if (!astrolabe) return;
       const text = formatChartAsText(astrolabe);
-      navigator.clipboard.writeText(text);
-      alert("盘面信息已复制到剪贴板！");
+      try {
+          const ok = await copyToClipboard(text);
+          alert(ok ? "盘面信息已复制到剪贴板！" : "复制失败，请手动复制。");
+      } catch (e) {
+          console.error(e);
+          alert("复制失败，请手动复制。");
+      }
   };
 
   return (
