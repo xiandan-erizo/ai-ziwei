@@ -3,6 +3,7 @@ import { calculateAstrolabe, formatChartAsText } from './services/iztroService';
 import { analyzeChart } from './services/geminiService';
 import { Astrolabe, Palace, UserInput } from './types';
 import GridMap from './components/GridMap';
+import BaZiChart from './components/BaZiChart';
 
 // --- Icons ---
 const SparklesIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" /></svg>;
@@ -90,6 +91,7 @@ const PalaceModal = ({ palace, onClose }: { palace: Palace; onClose: () => void 
 
 export default function App() {
   const chartRef = useRef<HTMLDivElement>(null);
+  const [activeTab, setActiveTab] = useState<'zwds' | 'bazi'>('zwds');
   const [input, setInput] = useState<UserInput>({
     calendarType: 'solar',
     solarDate: '1990-01-01',
@@ -152,9 +154,9 @@ export default function App() {
             {/* Header */}
             <header className="mb-6 md:mb-8 text-center">
                 <h1 className="text-3xl md:text-4xl font-serif-sc font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-300 mb-2">
-                    紫微斗数
+                    Iztro 命理探索
                 </h1>
-                <p className="text-slate-500 text-sm">专业排盘与AI解读</p>
+                <p className="text-slate-500 text-sm">紫微斗数 · 八字排盘 · AI解读</p>
             </header>
 
             {/* Controls */}
@@ -318,13 +320,32 @@ export default function App() {
 
             <div ref={chartRef}>
                 {astrolabe && (
-                    <div className="space-y-4 md:space-y-8 animate-fade-in">
+                    <div className="space-y-4 md:space-y-6 animate-fade-in">
                         {/* Toolbar - Sticky on Mobile */}
-                        <div className="sticky top-0 z-30 md:static -mx-4 px-4 py-3 md:mx-0 md:p-3 md:rounded-lg bg-slate-950/90 backdrop-blur-md md:bg-slate-900/50 border-b md:border border-slate-800 shadow-xl md:shadow-none flex justify-between items-center transition-all">
-                            <h2 className="text-sm md:text-lg font-serif-sc text-slate-300">
-                                {astrolabe.fourPillars.year}年 {astrolabe.fourPillars.month}月 {astrolabe.fourPillars.day}日
-                            </h2>
-                            <div className="flex gap-2 md:gap-3">
+                        <div className="sticky top-0 z-30 md:static -mx-4 px-4 py-3 md:mx-0 md:p-3 md:rounded-lg bg-slate-950/90 backdrop-blur-md md:bg-slate-900/50 border-b md:border border-slate-800 shadow-xl md:shadow-none flex flex-col md:flex-row justify-between items-center gap-3 transition-all">
+                            <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-start">
+                                <h2 className="text-sm md:text-lg font-serif-sc text-slate-300">
+                                    {astrolabe.fourPillars.year}年 {astrolabe.fourPillars.month}月 {astrolabe.fourPillars.day}日
+                                </h2>
+                                
+                                {/* Tabs */}
+                                <div className="flex bg-slate-800/80 p-1 rounded-lg">
+                                    <button 
+                                        onClick={() => setActiveTab('zwds')}
+                                        className={`px-3 py-1 text-xs rounded-md transition-all ${activeTab === 'zwds' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                                    >
+                                        紫微斗数
+                                    </button>
+                                    <button 
+                                        onClick={() => setActiveTab('bazi')}
+                                        className={`px-3 py-1 text-xs rounded-md transition-all ${activeTab === 'bazi' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                                    >
+                                        八字排盘
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div className="flex gap-2 md:gap-3 w-full md:w-auto justify-end">
                                 <button onClick={handleCopy} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs md:text-sm text-slate-300 transition-colors border border-slate-700">
                                     <CopyIcon /> <span className="hidden md:inline">复制</span>
                                 </button>
@@ -338,12 +359,16 @@ export default function App() {
                             </div>
                         </div>
 
-                        {/* Grid */}
-                        <GridMap astrolabe={astrolabe} onPalaceClick={setSelectedPalace} />
+                        {/* Content Area */}
+                        {activeTab === 'zwds' ? (
+                            <GridMap astrolabe={astrolabe} onPalaceClick={setSelectedPalace} />
+                        ) : (
+                            astrolabe.bazi ? <BaZiChart bazi={astrolabe.bazi} currentDate={input.focusDate} /> : <div className="p-8 text-center text-slate-500">无法生成八字数据</div>
+                        )}
 
                         {/* Analysis Result */}
                         {analysis && (
-                            <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 md:p-8 shadow-2xl relative overflow-hidden">
+                            <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 md:p-8 shadow-2xl relative overflow-hidden mt-4">
                                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-indigo-500"></div>
                                 <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
                                     <SparklesIcon /> AI 命理分析
@@ -360,7 +385,7 @@ export default function App() {
             </div>
         </div>
         
-        {selectedPalace && (
+        {selectedPalace && activeTab === 'zwds' && (
             <PalaceModal palace={selectedPalace} onClose={() => setSelectedPalace(null)} />
         )}
     </div>

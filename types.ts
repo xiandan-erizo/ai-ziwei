@@ -69,6 +69,42 @@ export interface Horoscope {
   };
 }
 
+// BaZi Specific Types
+export interface BaZiItem {
+    char: string; // The Chinese Character (e.g., 甲, 子)
+    wuxing: string; // Five Element (e.g., 木, 水)
+    shishen?: string; // Ten God (e.g., 比肩, 正官) - Only for Stems or Hidden Stems
+}
+
+export interface BaZiPillar {
+    name: string; // Year, Month, Day, Hour
+    gan: BaZiItem;
+    zhi: BaZiItem & {
+        hidden: BaZiItem[]; // Hidden Stems in the Branch
+    };
+    nayin: string; // Na Yin (Melodic Element)
+    kongwang: string; // Empty Death (Xun Kong)
+    changsheng: string; // 12 Life Stage relative to Day Master
+    shensha: string[]; // List of Gods/Evils (e.g., Tian Yi, Yi Ma)
+}
+
+export interface BaZiDaYun {
+    startAge: number;
+    endAge: number;
+    startYear: number;
+    endYear: number;
+    gan: BaZiItem;
+    zhi: BaZiItem;
+}
+
+export interface BaZiChart {
+    pillars: BaZiPillar[]; // [Year, Month, Day, Hour]
+    dayMaster: string;
+    dayMasterWuXing: string;
+    daYun: BaZiDaYun[]; // Array of Luck Pillars
+    startYunAge: number; // Age when the first Da Yun starts
+}
+
 export interface Astrolabe {
   palaces: Palace[];
   solarDate: string;
@@ -81,6 +117,7 @@ export interface Astrolabe {
     isLeap: boolean;
   };
   fourPillars: FourPillars;
+  bazi?: BaZiChart; // Added BaZi Chart Data
   time: string;
   timeRange: string;
   sign: string;

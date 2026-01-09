@@ -1,6 +1,6 @@
 import { astro } from 'iztro';
 import { Solar, Lunar } from 'lunar-javascript';
-import { Astrolabe, Palace, Star, UserInput, FlowLayer, Horoscope, SiHua } from '../types';
+import { Astrolabe, Palace, Star, UserInput, FlowLayer, Horoscope, SiHua, BaZiChart, BaZiPillar, BaZiDaYun } from '../types';
 
 // Calculate Time Index (0-11) based on True Solar Time
 export const calculateTimeIndex = (hour: number, minute: number, longitude: number): number => {
@@ -43,32 +43,24 @@ const getSiHua = (stem: string): SiHua | undefined => {
 };
 
 // Calculate Solar Term Range for Flow Month
-// Returns the Start (Jie) and End (Next Jie) for the month containing the date
 const getSolarTermRange = (dateStr: string) => {
     try {
         const date = new Date(dateStr);
-        // lunar-javascript uses month 1-12
         const solar = Solar.fromYmd(date.getFullYear(), date.getMonth() + 1, date.getDate());
         const lunar = solar.getLunar();
         
-        // ZWDS Months are based on Jie (Section), not Qi (Middle).
-        // JIE_NAMES: 立春, 惊蛰, 清明, 立夏, 芒种, 小暑, 立秋, 白露, 寒露, 立冬, 大雪, 小寒
         const JIE_NAMES = ['立春', '惊蛰', '清明', '立夏', '芒种', '小暑', '立秋', '白露', '寒露', '立冬', '大雪', '小寒'];
 
-        // Helper to find nearest PREVIOUS Jie (Strictly Jie, skipping Qi)
-        let startTerm = lunar.getPrevJieQi(true); // true = inclusive
+        let startTerm = lunar.getPrevJieQi(true); 
         let attempts = 0;
         while (startTerm && !JIE_NAMES.includes(startTerm.getName()) && attempts < 5) {
-            // If it's a Qi (e.g. Chun Fen), go back further
             const sDate = startTerm.getSolar();
-            // Go back 1 day before this term to search again
             const prevDay = sDate.next(-1);
             startTerm = prevDay.getLunar().getPrevJieQi(true);
             attempts++;
         }
 
-        // Helper to find nearest NEXT Jie
-        let endTerm = lunar.getNextJieQi(false); // false = exclusive (strict next)
+        let endTerm = lunar.getNextJieQi(false);
         attempts = 0;
         while (endTerm && !JIE_NAMES.includes(endTerm.getName()) && attempts < 5) {
             const sDate = endTerm.getSolar();
@@ -81,7 +73,6 @@ const getSolarTermRange = (dateStr: string) => {
             const s = startTerm.getSolar();
             const e = endTerm.getSolar();
             
-            // Format: YYYY-MM-DD HH:mm:ss
             const format = (sol: any) => {
                 const pad = (n: number) => n.toString().padStart(2, '0');
                 return `${sol.getYear()}-${pad(sol.getMonth())}-${pad(sol.getDay())} ${pad(sol.getHour())}:${pad(sol.getMinute())}`;
@@ -100,15 +91,135 @@ const getSolarTermRange = (dateStr: string) => {
     return undefined;
 };
 
+const TEN_GODS: Record<string, Record<string, string>> = {
+    '甲': { '甲': '比肩', '乙': '劫财', '丙': '食神', '丁': '伤官', '戊': '偏财', '己': '正财', '庚': '七杀', '辛': '正官', '壬': '偏印', '癸': '正印' },
+    '乙': { '甲': '劫财', '乙': '比肩', '丙': '伤官', '丁': '食神', '戊': '正财', '己': '偏财', '庚': '正官', '辛': '七杀', '壬': '正印', '癸': '偏印' },
+    '丙': { '甲': '偏印', '乙': '正印', '丙': '比肩', '丁': '劫财', '戊': '食神', '己': '伤官', '庚': '偏财', '辛': '正财', '壬': '七杀', '癸': '正官' },
+    '丁': { '甲': '正印', '乙': '偏印', '丙': '劫财', '丁': '比肩', '戊': '伤官', '己': '食神', '庚': '正财', '辛': '偏财', '壬': '正官', '癸': '七杀' },
+    '戊': { '甲': '七杀', '乙': '正官', '丙': '偏印', '丁': '正印', '戊': '比肩', '己': '劫财', '庚': '食神', '辛': '伤官', '壬': '偏财', '癸': '正财' },
+    '己': { '甲': '正官', '乙': '七杀', '丙': '正印', '丁': '偏印', '戊': '劫财', '己': '比肩', '庚': '伤官', '辛': '食神', '壬': '正财', '癸': '偏财' },
+    '庚': { '甲': '偏财', '乙': '正财', '丙': '七杀', '丁': '正官', '戊': '偏印', '己': '正印', '庚': '比肩', '辛': '劫财', '壬': '食神', '癸': '伤官' },
+    '辛': { '甲': '正财', '乙': '偏财', '丙': '正官', '丁': '七杀', '戊': '正印', '己': '偏印', '庚': '劫财', '辛': '比肩', '壬': '伤官', '癸': '食神' },
+    '壬': { '甲': '食神', '乙': '伤官', '丙': '偏财', '丁': '正财', '戊': '七杀', '己': '正官', '庚': '偏印', '辛': '正印', '壬': '比肩', '癸': '劫财' },
+    '癸': { '甲': '伤官', '乙': '食神', '丙': '正财', '丁': '偏财', '戊': '正官', '己': '七杀', '庚': '正印', '辛': '偏印', '壬': '劫财', '癸': '比肩' },
+};
+
+const getTenGod = (dayGanName: string, targetGanName: string): string => {
+    return TEN_GODS[dayGanName]?.[targetGanName] || '';
+};
+
+const WU_XING_GAN: Record<string, string> = {
+    '甲': '木', '乙': '木', '丙': '火', '丁': '火', '戊': '土', '己': '土', '庚': '金', '辛': '金', '壬': '水', '癸': '水'
+};
+
+const WU_XING_ZHI: Record<string, string> = {
+    '子': '水', '丑': '土', '寅': '木', '卯': '木', '辰': '土', '巳': '火', '午': '火', '未': '土', '申': '金', '酉': '金', '戌': '土', '亥': '水'
+};
+
+const HIDDEN_STEMS: Record<string, string[]> = {
+  '子': ['癸'],
+  '丑': ['己', '癸', '辛'],
+  '寅': ['甲', '丙', '戊'],
+  '卯': ['乙'],
+  '辰': ['戊', '乙', '癸'],
+  '巳': ['丙', '庚', '戊'],
+  '午': ['丁', '己'],
+  '未': ['己', '丁', '乙'],
+  '申': ['庚', '壬', '戊'],
+  '酉': ['辛'],
+  '戌': ['戊', '辛', '丁'],
+  '亥': ['壬', '甲']
+};
+
+// --- Shen Sha (Gods & Evils) Helpers ---
+// Simplified lookup tables
+const TIAN_YI_MAP: Record<string, string[]> = {
+    '甲': ['丑', '未'], '戊': ['丑', '未'], '庚': ['丑', '未'],
+    '乙': ['子', '申'], '己': ['子', '申'],
+    '丙': ['亥', '酉'], '丁': ['亥', '酉'],
+    '壬': ['巳', '卯'], '癸': ['巳', '卯'],
+    '辛': ['午', '寅']
+};
+const WEN_CHANG_MAP: Record<string, string> = {
+    '甲': '巳', '乙': '午', '丙': '申', '丁': '酉', '戊': '申', '己': '酉', '庚': '亥', '辛': '子', '壬': '寅', '癸': '卯'
+};
+const YI_MA_MAP: Record<string, string> = {
+    '申': '寅', '子': '寅', '辰': '寅',
+    '寅': '申', '午': '申', '戌': '申',
+    '亥': '巳', '卯': '巳', '未': '巳',
+    '巳': '亥', '酉': '亥', '丑': '亥'
+};
+const TAO_HUA_MAP: Record<string, string> = {
+    '申': '酉', '子': '酉', '辰': '酉',
+    '寅': '卯', '午': '卯', '戌': '卯',
+    '亥': '子', '卯': '子', '未': '子',
+    '巳': '午', '酉': '午', '丑': '午'
+};
+
+const getShenSha = (dayGan: string, dayZhi: string, yearZhi: string, targetZhi: string, targetGan?: string): string[] => {
+    const list: string[] = [];
+    
+    // Tian Yi Gui Ren (Nobleman) - Based on Day Gan or Year Gan (using Day Gan primarily here)
+    if (TIAN_YI_MAP[dayGan]?.includes(targetZhi)) list.push('天乙');
+    
+    // Wen Chang (Academic) - Based on Day Gan
+    if (WEN_CHANG_MAP[dayGan] === targetZhi) list.push('文昌');
+
+    // Yi Ma (Horse) - Based on Day Zhi or Year Zhi
+    if (YI_MA_MAP[dayZhi] === targetZhi || YI_MA_MAP[yearZhi] === targetZhi) list.push('驿马');
+
+    // Tao Hua (Peach Blossom) - Based on Day Zhi or Year Zhi
+    if (TAO_HUA_MAP[dayZhi] === targetZhi || TAO_HUA_MAP[yearZhi] === targetZhi) list.push('桃花');
+
+    // Lu Shen (Prosperity)
+    const LU_MAP: Record<string, string> = {'甲':'寅','乙':'卯','丙':'巳','丁':'午','戊':'巳','己':'午','庚':'申','辛':'酉','壬':'亥','癸':'子'};
+    if (LU_MAP[dayGan] === targetZhi) list.push('禄神');
+
+    // Yang Ren (Goat Blade)
+    const YANG_REN_MAP: Record<string, string> = {'甲':'卯','乙':'辰','丙':'午','丁':'未','戊':'午','己':'未','庚':'酉','辛':'戌','壬':'子','癸':'丑'};
+    if (YANG_REN_MAP[dayGan] === targetZhi) list.push('羊刃');
+
+    return list;
+};
+
+// 12 Life Stages (Chang Sheng) Logic
+const CHANG_SHENG_ORDER = ['长生', '沐浴', '冠带', '临官', '帝旺', '衰', '病', '死', '墓', '绝', '胎', '养'];
+const BRANCHES = ['亥', '子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌'];
+
+const CHANG_SHENG_START: Record<string, number> = {
+    '甲': 0, '乙': 7, '丙': 3, '戊': 3, '丁': 10, '己': 10, '庚': 6, '辛': 1, '壬': 9, '癸': 4
+};
+
+const getChangSheng = (stem: string, branch: string): string => {
+    const startIndex = CHANG_SHENG_START[stem];
+    if (startIndex === undefined) return '';
+    const branchIndex = BRANCHES.indexOf(branch);
+    if (branchIndex === -1) return '';
+    const isYang = ['甲', '丙', '戊', '庚', '壬'].includes(stem);
+    let offset = isYang ? (branchIndex - startIndex + 12) % 12 : (startIndex - branchIndex + 12) % 12;
+    return CHANG_SHENG_ORDER[offset] || '';
+};
+
 export const calculateAstrolabe = (input: UserInput): Astrolabe => {
   const timeIndex = calculateTimeIndex(input.birthHour, input.birthMinute, input.longitude);
   let astrolabe: any;
+  let lunarObj: any;
 
   if (input.calendarType === 'lunar') {
     const dateStr = `${input.lunarYear}-${input.lunarMonth}-${input.lunarDay}`;
     astrolabe = astro.byLunar(dateStr, timeIndex, input.gender, input.isLeapMonth, true, 'zh-CN');
+    
+    const solarDate = astrolabe.solarDate; 
+    const [y, m, d] = solarDate.split('-').map(Number);
+    const solarObj = Solar.fromYmdHms(y, m, d, input.birthHour, input.birthMinute, 0);
+    lunarObj = solarObj.getLunar();
+
   } else {
     astrolabe = astro.bySolar(input.solarDate, timeIndex, input.gender, true, 'zh-CN');
+    
+    const [y, m, d] = input.solarDate.split('-').map(Number);
+    const solarObj = Solar.fromYmdHms(y, m, d, input.birthHour, input.birthMinute, 0);
+    lunarObj = solarObj.getLunar();
   }
 
   const mapStars = (stars: any[], type: Star['type']): Star[] => {
@@ -143,14 +254,106 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
     ages: p.ages
   }));
 
-  const lunar = astrolabe.lunar;
   let yearGZ = '', monthGZ = '', dayGZ = '', hourGZ = '';
+  let baziChart: BaZiChart | undefined = undefined;
 
-  if (lunar) {
-      yearGZ = lunar.getYearInGanZhiExact ? lunar.getYearInGanZhiExact() : lunar.getYearInGanZhi();
-      monthGZ = lunar.getMonthInGanZhiExact ? lunar.getMonthInGanZhiExact() : lunar.getMonthInGanZhi();
-      dayGZ = lunar.getDayInGanZhiExact ? lunar.getDayInGanZhiExact() : lunar.getDayInGanZhi();
-      hourGZ = lunar.getTimeInGanZhi();
+  if (lunarObj) {
+      yearGZ = lunarObj.getYearInGanZhiExact ? lunarObj.getYearInGanZhiExact() : lunarObj.getYearInGanZhi();
+      monthGZ = lunarObj.getMonthInGanZhiExact ? lunarObj.getMonthInGanZhiExact() : lunarObj.getMonthInGanZhi();
+      dayGZ = lunarObj.getDayInGanZhiExact ? lunarObj.getDayInGanZhiExact() : lunarObj.getDayInGanZhi();
+      hourGZ = lunarObj.getTimeInGanZhi();
+
+      try {
+          const eightChar = lunarObj.getEightChar();
+          eightChar.setSect(2);
+
+          const dayGanStr = eightChar.getDayGan(); 
+          const dayMaster = dayGanStr;
+          const dayMasterWuXing = WU_XING_GAN[dayMaster] || '';
+          const yearZhiStr = eightChar.getYearZhi();
+          const dayZhiStr = eightChar.getDayZhi();
+
+          const createPillar = (name: string, ganStr: string, zhiStr: string, nayin: string, xun: string): BaZiPillar => {
+              const hiddenStemsList = HIDDEN_STEMS[zhiStr] || [];
+              const hiddenStems = hiddenStemsList.map(hChar => ({
+                  char: hChar,
+                  wuxing: WU_XING_GAN[hChar] || '',
+                  shishen: getTenGod(dayMaster, hChar)
+              }));
+
+              return {
+                  name,
+                  gan: {
+                      char: ganStr,
+                      wuxing: WU_XING_GAN[ganStr] || '',
+                      shishen: name !== '日柱' ? getTenGod(dayMaster, ganStr) : '日主'
+                  },
+                  zhi: {
+                      char: zhiStr,
+                      wuxing: WU_XING_ZHI[zhiStr] || '',
+                      hidden: hiddenStems
+                  },
+                  nayin,
+                  kongwang: xun,
+                  changsheng: getChangSheng(dayMaster, zhiStr),
+                  shensha: getShenSha(dayMaster, dayZhiStr, yearZhiStr, zhiStr, ganStr)
+              };
+          };
+
+          const yun = eightChar.getYun(input.gender === 'male' ? 1 : 0);
+          const daYunArr = yun.getDaYun();
+          const daYunList: BaZiDaYun[] = [];
+          
+          let startYunAge = 0;
+          if (daYunArr && daYunArr.length > 0) {
+              startYunAge = daYunArr[0].getStartAge();
+          }
+
+          for (let i = 0; i < daYunArr.length; i++) {
+            const dy = daYunArr[i];
+            const startAge = dy.getStartAge();
+            if (startAge > 110) break;
+            
+            const gz = dy.getGanZhi(); 
+            if (!gz || gz.length < 2) continue; // Skip invalid entries
+
+            const ganChar = gz.charAt(0);
+            const zhiChar = gz.charAt(1);
+
+            daYunList.push({
+                startAge: startAge,
+                endAge: dy.getEndAge(),
+                startYear: dy.getStartYear(),
+                endYear: dy.getEndYear(),
+                gan: {
+                    char: ganChar,
+                    wuxing: WU_XING_GAN[ganChar] || '',
+                    shishen: getTenGod(dayMaster, ganChar)
+                },
+                zhi: {
+                    char: zhiChar,
+                    wuxing: WU_XING_ZHI[zhiChar] || '',
+                    shishen: ''
+                }
+            });
+          }
+
+          baziChart = {
+              dayMaster,
+              dayMasterWuXing,
+              startYunAge,
+              pillars: [
+                  createPillar('年柱', eightChar.getYearGan(), eightChar.getYearZhi(), eightChar.getYearNaYin(), eightChar.getYearXunKong()),
+                  createPillar('月柱', eightChar.getMonthGan(), eightChar.getMonthZhi(), eightChar.getMonthNaYin(), eightChar.getMonthXunKong()),
+                  createPillar('日柱', eightChar.getDayGan(), eightChar.getDayZhi(), eightChar.getDayNaYin(), eightChar.getDayXunKong()),
+                  createPillar('时柱', eightChar.getTimeGan(), eightChar.getTimeZhi(), eightChar.getTimeNaYin(), eightChar.getTimeXunKong()),
+              ],
+              daYun: daYunList
+          };
+
+      } catch (e) {
+          console.warn("Failed to generate detailed BaZi", e);
+      }
   } else {
       const parts = astrolabe.chineseDate.trim().split(/\s+/);
       const stripUnit = (str: string) => str && str.length > 0 ? str.substring(0, str.length - 1) : '';
@@ -165,8 +368,6 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
   if (input.focusDate) {
     try {
         const flow = astrolabe.horoscope(input.focusDate);
-        
-        // Calculate detailed solar term range for the specific focus date
         const termRange = getSolarTermRange(input.focusDate);
 
         const mapFlowLayer = (layer: any): FlowLayer => {
@@ -227,7 +428,7 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
                 month: mapFlowLayer(flow.monthly),
                 yearSiHua: getSiHua(flow.yearly.heavenlyStem),
                 monthSiHua: getSiHua(flow.monthly.heavenlyStem),
-                monthRange: termRange // Use our calculated range instead of flow.monthly.startDate
+                monthRange: termRange
             };
         }
     } catch (e) {
@@ -252,6 +453,7 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
       day: dayGZ,
       hour: hourGZ,
     },
+    bazi: baziChart,
     time: astrolabe.time,
     timeRange: astrolabe.timeRange,
     sign: astrolabe.sign,
@@ -269,7 +471,6 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
   };
 };
 
-// Formatter for "Copy/Paste"
 export const formatChartAsText = (astrolabe: Astrolabe): string => {
   const getDisplayWidth = (str: string) => {
     let len = 0;
@@ -290,12 +491,36 @@ export const formatChartAsText = (astrolabe: Astrolabe): string => {
   let text = `【紫微斗数排盘 | Zi Wei Dou Shu Chart】\n`;
   text += `------------------------------------------------\n`;
   text += `性别 (Gender): ${astrolabe.originalGender} (${astrolabe.gender})\n`;
-  // Explicit birth time with minute
   const minuteStr = astrolabe.birthMinute !== undefined ? padZero(astrolabe.birthMinute) : '00';
   text += `阳历 (Solar):  ${astrolabe.solarDate} ${astrolabe.birthHour}:${minuteStr} (${astrolabe.time})\n`;
   text += `农历 (Lunar):  ${astrolabe.lunarDate}\n`;
   text += `八字 (BaZi):   ${astrolabe.fourPillars.year}年 ${astrolabe.fourPillars.month}月 ${astrolabe.fourPillars.day}日 ${astrolabe.fourPillars.hour}时\n`;
   
+  if (astrolabe.bazi) {
+      const b = astrolabe.bazi;
+      text += `------------------------------------------------\n`;
+      text += `【八字命盘】\n`;
+      text += `      年柱     月柱     日柱     时柱\n`;
+      text += `十神: ${padRight(b.pillars[0].gan.shishen || '', 8)} ${padRight(b.pillars[1].gan.shishen || '', 8)} ${padRight('日主', 8)} ${padRight(b.pillars[3].gan.shishen || '', 8)}\n`;
+      text += `天干: ${padRight(b.pillars[0].gan.char, 8)} ${padRight(b.pillars[1].gan.char, 8)} ${padRight(b.pillars[2].gan.char, 8)} ${padRight(b.pillars[3].gan.char, 8)}\n`;
+      text += `地支: ${padRight(b.pillars[0].zhi.char, 8)} ${padRight(b.pillars[1].zhi.char, 8)} ${padRight(b.pillars[2].zhi.char, 8)} ${padRight(b.pillars[3].zhi.char, 8)}\n`;
+      
+      const getHiddenStr = (p: BaZiPillar) => {
+          return p.zhi.hidden.map(h => `${h.char}${h.shishen}`).join(' ');
+      };
+      
+      text += `藏干: ${padRight(getHiddenStr(b.pillars[0]), 8)} ${padRight(getHiddenStr(b.pillars[1]), 8)} ${padRight(getHiddenStr(b.pillars[2]), 8)} ${padRight(getHiddenStr(b.pillars[3]), 8)}\n`;
+      text += `纳音: ${padRight(b.pillars[0].nayin, 8)} ${padRight(b.pillars[1].nayin, 8)} ${padRight(b.pillars[2].nayin, 8)} ${padRight(b.pillars[3].nayin, 8)}\n`;
+      text += `长生: ${padRight(b.pillars[0].changsheng, 8)} ${padRight(b.pillars[1].changsheng, 8)} ${padRight(b.pillars[2].changsheng, 8)} ${padRight(b.pillars[3].changsheng, 8)}\n`;
+      text += `神煞: ${padRight(b.pillars[0].shensha.join(','), 8)} ${padRight(b.pillars[1].shensha.join(','), 8)} ${padRight(b.pillars[2].shensha.join(','), 8)} ${padRight(b.pillars[3].shensha.join(','), 8)}\n`;
+      text += `空亡: ${padRight(b.pillars[0].kongwang, 8)} ${padRight(b.pillars[1].kongwang, 8)} ${padRight(b.pillars[2].kongwang, 8)} ${padRight(b.pillars[3].kongwang, 8)}\n`;
+      
+      text += `\n【大运 (Decadal Luck)】 (起运: ${b.startYunAge}岁)\n`;
+      b.daYun.forEach((dy, i) => {
+          text += `${dy.startAge}-${dy.endAge}岁: ${dy.gan.char}${dy.zhi.char} [${dy.gan.shishen}]\n`;
+      });
+  }
+
   if (astrolabe.longitude !== undefined) {
       let locStr = `经度 ${astrolabe.longitude}°`;
       if (astrolabe.latitude !== undefined) locStr += `, 纬度 ${astrolabe.latitude}°`;
@@ -326,7 +551,6 @@ export const formatChartAsText = (astrolabe: Astrolabe): string => {
           text += `  流月四化: 禄-${h.monthSiHua.lu}, 权-${h.monthSiHua.quan}, 科-${h.monthSiHua.ke}, 忌-${h.monthSiHua.ji}\n`;
       }
       
-      // Detailed Month Range
       if (h.monthRange?.start) {
         text += `  流月范围: 起于 ${h.monthRange.startName} (${h.monthRange.start})\n`;
         text += `            止于 ${h.monthRange.endName} (${h.monthRange.end})\n`;
