@@ -214,9 +214,12 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
     const [y, m, d] = [solarFromLunar.getYear(), solarFromLunar.getMonth(), solarFromLunar.getDay()];
     
     // Calculate True Solar Time for BaZi Generation
-    const timeDifferenceMinutes = (input.longitude - 120) * 4;
-    const birthDate = new Date(y, m - 1, d, input.birthHour, input.birthMinute);
-    const trueSolarDate = new Date(birthDate.getTime() + timeDifferenceMinutes * 60000);
+    // Beijing Time is GMT+8 (120 deg). 1 deg = 4 minutes.
+    const longitude = input.longitude || 120;
+    const offsetMinutes = (longitude - 120) * 4;
+    
+    const trueSolarDate = new Date(y, m - 1, d, input.birthHour, input.birthMinute);
+    trueSolarDate.setMinutes(trueSolarDate.getMinutes() + offsetMinutes);
 
     const solarObj = Solar.fromYmdHms(
         trueSolarDate.getFullYear(), 
@@ -234,9 +237,11 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
     const [y, m, d] = input.solarDate.split('-').map(Number);
     
     // Calculate True Solar Time for BaZi Generation
-    const timeDifferenceMinutes = (input.longitude - 120) * 4;
-    const birthDate = new Date(y, m - 1, d, input.birthHour, input.birthMinute);
-    const trueSolarDate = new Date(birthDate.getTime() + timeDifferenceMinutes * 60000);
+    const longitude = input.longitude || 120;
+    const offsetMinutes = (longitude - 120) * 4;
+    
+    const trueSolarDate = new Date(y, m - 1, d, input.birthHour, input.birthMinute);
+    trueSolarDate.setMinutes(trueSolarDate.getMinutes() + offsetMinutes);
 
     const solarObj = Solar.fromYmdHms(
         trueSolarDate.getFullYear(), 
@@ -292,8 +297,9 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
 
       try {
           const eightChar = lunarObj.getEightChar();
-          // Use Sect 2 (Precise) to ensure calculating start date considers exact solar terms to the minute.
-          eightChar.setSect(2);
+          // Use Sect 1 (Standard/Traditional) to align start dates with traditional tools (usually 3 days = 1 year)
+          // Also combined with True Solar Time adjustment above for correctness.
+          eightChar.setSect(1);
 
           const dayGanStr = eightChar.getDayGan(); 
           const dayMaster = dayGanStr;
