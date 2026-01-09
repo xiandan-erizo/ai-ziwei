@@ -78,11 +78,19 @@ const PillarColumn: React.FC<{ pillar: BaZiPillar, title: string, highlight?: bo
 
 const DaYunCard: React.FC<{ dy: BaZiDaYun, isActive: boolean }> = ({ dy, isActive }) => {
     return (
-        <div className={`flex-shrink-0 flex flex-col items-center p-2 rounded-md border min-w-[60px] ${isActive ? 'bg-purple-900/30 border-purple-500 ring-1 ring-purple-500/50' : 'bg-slate-900/50 border-slate-800'}`}>
+        <div className={`flex-shrink-0 flex flex-col items-center p-2 rounded-md border min-w-[65px] group relative ${isActive ? 'bg-purple-900/30 border-purple-500 ring-1 ring-purple-500/50' : 'bg-slate-900/50 border-slate-800'}`}>
              <div className="text-[10px] text-slate-500 mb-1">{dy.startAge}岁</div>
              <div className="text-[10px] text-slate-400 mb-1">{dy.gan.shishen}</div>
              <div className="text-lg font-serif-sc text-slate-200">{dy.gan.char}</div>
              <div className="text-lg font-serif-sc text-slate-200">{dy.zhi.char}</div>
+             
+             {/* Simple Hidden Stems display for Da Yun */}
+             <div className="flex gap-0.5 mt-1 border-t border-slate-800/50 pt-1 w-full justify-center">
+                 {dy.zhi.hidden.map((h,i) => (
+                     <span key={i} className="text-[8px] text-slate-500">{h.char}</span>
+                 ))}
+             </div>
+
              <div className="text-[10px] text-slate-600 mt-1">{dy.startYear}</div>
         </div>
     );
@@ -139,10 +147,20 @@ const BaZiChart: React.FC<BaZiChartProps> = ({ bazi, currentDate }) => {
 
             {/* Da Yun Section */}
             <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 shadow-lg overflow-hidden">
-                <h4 className="text-sm font-bold text-slate-400 mb-3 flex items-center justify-between">
-                    <span>大运 (Decades)</span>
-                    <span className="text-[10px] font-normal bg-slate-800 px-2 py-0.5 rounded text-slate-500">起运年龄: {bazi.startYunAge}岁</span>
-                </h4>
+                <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-sm font-bold text-slate-400">大运 (Decades)</h4>
+                    <div className="flex flex-col items-end gap-0.5">
+                        <span className="text-[10px] font-normal bg-slate-800 px-2 py-0.5 rounded text-slate-500">
+                             起运: {bazi.startYunAge}岁
+                        </span>
+                        {bazi.startYunDate && (
+                             <span className="text-[9px] text-slate-600 px-1">
+                                 {bazi.startYunDate}
+                             </span>
+                        )}
+                    </div>
+                </div>
+                
                 <div ref={scrollRef} className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x">
                     {bazi.daYun.map((dy, idx) => (
                         <DaYunCard key={idx} dy={dy} isActive={idx === activeDaYunIndex} />

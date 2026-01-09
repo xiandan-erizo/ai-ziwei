@@ -209,16 +209,43 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
     const dateStr = `${input.lunarYear}-${input.lunarMonth}-${input.lunarDay}`;
     astrolabe = astro.byLunar(dateStr, timeIndex, input.gender, input.isLeapMonth, true, 'zh-CN');
     
-    const solarDate = astrolabe.solarDate; 
-    const [y, m, d] = solarDate.split('-').map(Number);
-    const solarObj = Solar.fromYmdHms(y, m, d, input.birthHour, input.birthMinute, 0);
+    // For BaZi with True Solar Time, we need to convert Lunar to Solar, then adjust for longitude
+    const solarFromLunar = Solar.fromLunar(Lunar.fromYmd(input.lunarYear, input.lunarMonth, input.lunarDay));
+    const [y, m, d] = [solarFromLunar.getYear(), solarFromLunar.getMonth(), solarFromLunar.getDay()];
+    
+    // Calculate True Solar Time for BaZi Generation
+    const timeDifferenceMinutes = (input.longitude - 120) * 4;
+    const birthDate = new Date(y, m - 1, d, input.birthHour, input.birthMinute);
+    const trueSolarDate = new Date(birthDate.getTime() + timeDifferenceMinutes * 60000);
+
+    const solarObj = Solar.fromYmdHms(
+        trueSolarDate.getFullYear(), 
+        trueSolarDate.getMonth() + 1, 
+        trueSolarDate.getDate(), 
+        trueSolarDate.getHours(), 
+        trueSolarDate.getMinutes(), 
+        trueSolarDate.getSeconds()
+    );
     lunarObj = solarObj.getLunar();
 
   } else {
     astrolabe = astro.bySolar(input.solarDate, timeIndex, input.gender, true, 'zh-CN');
     
     const [y, m, d] = input.solarDate.split('-').map(Number);
-    const solarObj = Solar.fromYmdHms(y, m, d, input.birthHour, input.birthMinute, 0);
+    
+    // Calculate True Solar Time for BaZi Generation
+    const timeDifferenceMinutes = (input.longitude - 120) * 4;
+    const birthDate = new Date(y, m - 1, d, input.birthHour, input.birthMinute);
+    const trueSolarDate = new Date(birthDate.getTime() + timeDifferenceMinutes * 60000);
+
+    const solarObj = Solar.fromYmdHms(
+        trueSolarDate.getFullYear(), 
+        trueSolarDate.getMonth() + 1, 
+        trueSolarDate.getDate(), 
+        trueSolarDate.getHours(), 
+        trueSolarDate.getMinutes(), 
+        trueSolarDate.getSeconds()
+    );
     lunarObj = solarObj.getLunar();
   }
 
@@ -265,6 +292,7 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
 
       try {
           const eightChar = lunarObj.getEightChar();
+          // Use Sect 2 (Precise) to ensure calculating start date considers exact solar terms to the minute.
           eightChar.setSect(2);
 
           const dayGanStr = eightChar.getDayGan(); 
@@ -305,8 +333,13 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
           const daYunList: BaZiDaYun[] = [];
           
           let startYunAge = 0;
+          let startYunDateStr = '';
+
           if (daYunArr && daYunArr.length > 0) {
               startYunAge = daYunArr[0].getStartAge();
+              // Calculate specific start date
+              const startSolar = yun.getStartSolar();
+              startYunDateStr = startSolar.toYmd();
           }
 
           for (let i = 0; i < daYunArr.length; i++) {
@@ -319,6 +352,14 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
 
             const ganChar = gz.charAt(0);
             const zhiChar = gz.charAt(1);
+
+            // Hidden Stems for Da Yun Branch
+            const hiddenStemsList = HIDDEN_STEMS[zhiChar] || [];
+            const hiddenStems = hiddenStemsList.map(hChar => ({
+                char: hChar,
+                wuxing: WU_XING_GAN[hChar] || '',
+                shishen: getTenGod(dayMaster, hChar)
+            }));
 
             daYunList.push({
                 startAge: startAge,
@@ -333,7 +374,8 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
                 zhi: {
                     char: zhiChar,
                     wuxing: WU_XING_ZHI[zhiChar] || '',
-                    shishen: ''
+                    shishen: '',
+                    hidden: hiddenStems
                 }
             });
           }
@@ -342,6 +384,7 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
               dayMaster,
               dayMasterWuXing,
               startYunAge,
+              startYunDate: startYunDateStr,
               pillars: [
                   createPillar('年柱', eightChar.getYearGan(), eightChar.getYearZhi(), eightChar.getYearNaYin(), eightChar.getYearXunKong()),
                   createPillar('月柱', eightChar.getMonthGan(), eightChar.getMonthZhi(), eightChar.getMonthNaYin(), eightChar.getMonthXunKong()),
@@ -515,9 +558,10 @@ export const formatChartAsText = (astrolabe: Astrolabe): string => {
       text += `神煞: ${padRight(b.pillars[0].shensha.join(','), 8)} ${padRight(b.pillars[1].shensha.join(','), 8)} ${padRight(b.pillars[2].shensha.join(','), 8)} ${padRight(b.pillars[3].shensha.join(','), 8)}\n`;
       text += `空亡: ${padRight(b.pillars[0].kongwang, 8)} ${padRight(b.pillars[1].kongwang, 8)} ${padRight(b.pillars[2].kongwang, 8)} ${padRight(b.pillars[3].kongwang, 8)}\n`;
       
-      text += `\n【大运 (Decadal Luck)】 (起运: ${b.startYunAge}岁)\n`;
+      text += `\n【大运 (Decadal Luck)】 (起运: ${b.startYunAge}岁 ${b.startYunDate ? '| '+b.startYunDate : ''})\n`;
       b.daYun.forEach((dy, i) => {
-          text += `${dy.startAge}-${dy.endAge}岁: ${dy.gan.char}${dy.zhi.char} [${dy.gan.shishen}]\n`;
+          const hiddenStr = dy.zhi.hidden.map(h => h.char).join('');
+          text += `${dy.startAge}-${dy.endAge}岁: ${dy.gan.char}${dy.zhi.char} [${dy.gan.shishen}] {${hiddenStr}}\n`;
       });
   }
 

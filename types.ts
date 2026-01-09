@@ -94,7 +94,9 @@ export interface BaZiDaYun {
     startYear: number;
     endYear: number;
     gan: BaZiItem;
-    zhi: BaZiItem;
+    zhi: BaZiItem & {
+        hidden: BaZiItem[]; // Hidden Stems in the Branch
+    };
 }
 
 export interface BaZiChart {
@@ -103,6 +105,7 @@ export interface BaZiChart {
     dayMasterWuXing: string;
     daYun: BaZiDaYun[]; // Array of Luck Pillars
     startYunAge: number; // Age when the first Da Yun starts
+    startYunDate?: string; // Specific start date string (YYYY-MM-DD)
 }
 
 export interface Astrolabe {
