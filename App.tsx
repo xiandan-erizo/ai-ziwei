@@ -1,9 +1,14 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { calculateAstrolabe, formatChartAsText } from './services/iztroService';
 import { analyzeChart } from './services/openaiService';
-import { Astrolabe, Palace, UserInput } from './types';
+import { Astrolabe, Horoscope, Palace, Star, UserInput } from './types';
 import GridMap from './components/GridMap';
 import BaZiChart from './components/BaZiChart';
+import { marked } from 'marked';
+
+marked.setOptions({ breaks: true, gfm: true });
+
+const renderMarkdown = (text: string) => ({ __html: marked.parse(text || '') });
 
 // --- Icons ---
 const SparklesIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" /></svg>;
@@ -16,7 +21,40 @@ const CalendarIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" v
 const ChevronUpIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" /></svg>;
 const ChevronDownIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>;
 
-const PalaceModal = ({ palace, onClose }: { palace: Palace; onClose: () => void }) => {
+const PalaceModal = ({ palace, onClose, horoscope }: { palace: Palace; onClose: () => void; horoscope?: Horoscope | null }) => {
+    const getFlowTags = (starName: string) => {
+        if (!horoscope) return [] as string[];
+        const tags: string[] = [];
+        if (horoscope.yearSiHua) {
+            if (horoscope.yearSiHua.lu === starName) tags.push('年禄');
+            if (horoscope.yearSiHua.quan === starName) tags.push('年权');
+            if (horoscope.yearSiHua.ke === starName) tags.push('年科');
+            if (horoscope.yearSiHua.ji === starName) tags.push('年忌');
+        }
+        if (horoscope.monthSiHua) {
+            if (horoscope.monthSiHua.lu === starName) tags.push('月禄');
+            if (horoscope.monthSiHua.quan === starName) tags.push('月权');
+            if (horoscope.monthSiHua.ke === starName) tags.push('月科');
+            if (horoscope.monthSiHua.ji === starName) tags.push('月忌');
+        }
+        return tags;
+    };
+
+    const renderStar = (s: Star, colorClass: string, showMutagen = true, key?: string) => {
+        const flowTags = getFlowTags(s.name);
+        return (
+            <span key={key || `${s.name}-${s.brightness || ''}`} className={`flex items-center gap-1 px-2 py-1 border rounded text-sm ${colorClass}`}>
+                {s.name}
+                {s.brightness && <span className="text-xs opacity-60 font-normal">{s.brightness}</span>}
+                {showMutagen && s.mutagen && <span className="text-[10px] bg-white/10 px-1 rounded ml-1 text-white">{s.mutagen}</span>}
+                {flowTags.length > 0 && (
+                    <span className="text-[10px] text-emerald-200 bg-emerald-900/40 border border-emerald-500/40 px-1 rounded">
+                        {flowTags.join('')}
+                    </span>
+                )}
+            </span>
+        );
+    };
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
             <div className="glass glass-strong rounded-xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
@@ -34,23 +72,18 @@ const PalaceModal = ({ palace, onClose }: { palace: Palace; onClose: () => void 
                     <div className="mb-4">
                         <h4 className="text-xs uppercase tracking-wider text-slate-500 mb-2">主星</h4>
                         <div className="flex flex-wrap gap-2">
-                            {palace.majorStars.length > 0 ? palace.majorStars.map((s, i) => (
-                                <span key={i} className="flex items-center gap-1 px-2 py-1 bg-red-900/20 border border-red-900/50 rounded text-red-300 text-sm font-bold">
-                                    {s.name} <span className="text-xs opacity-60 font-normal">{s.brightness}</span>
-                                    {s.mutagen && <span className="text-[10px] bg-white/10 px-1 rounded ml-1 text-white">{s.mutagen}</span>}
-                                </span>
-                            )) : <span className="text-slate-600 text-sm">无</span>}
+                            {palace.majorStars.length > 0
+                                ? palace.majorStars.map((s, i) => renderStar(s, 'bg-red-900/20 border-red-900/50 text-red-300 font-bold', true, `major-${i}-${s.name}`))
+                                : <span className="text-slate-600 text-sm">无</span>}
                         </div>
                     </div>
 
                     <div className="mb-4">
                         <h4 className="text-xs uppercase tracking-wider text-slate-500 mb-2">辅星</h4>
                         <div className="flex flex-wrap gap-2">
-                            {palace.minorStars.length > 0 ? palace.minorStars.map((s, i) => (
-                                <span key={i} className="flex items-center gap-1 px-2 py-1 bg-sky-900/20 border border-sky-900/50 rounded text-sky-300 text-sm">
-                                    {s.name} <span className="text-xs opacity-60 font-normal">{s.brightness}</span>
-                                </span>
-                            )) : <span className="text-slate-600 text-sm">无</span>}
+                            {palace.minorStars.length > 0
+                                ? palace.minorStars.map((s, i) => renderStar(s, 'bg-sky-900/20 border-sky-900/50 text-sky-300', true, `minor-${i}-${s.name}`))
+                                : <span className="text-slate-600 text-sm">无</span>}
                         </div>
                     </div>
 
@@ -64,6 +97,53 @@ const PalaceModal = ({ palace, onClose }: { palace: Palace; onClose: () => void 
                              )) : <span className="text-slate-600 text-sm">无</span>}
                          </div>
                     </div>
+
+                    {palace.toughStars && palace.toughStars.length > 0 && (
+                        <div className="mb-4">
+                            <h4 className="text-xs uppercase tracking-wider text-slate-500 mb-2">煞曜</h4>
+                            <div className="flex flex-wrap gap-2">
+                                {palace.toughStars.map((s, i) => renderStar(s, 'bg-rose-900/20 border-rose-900/50 text-rose-300', false, `tough-${i}-${s.name}`))}
+                            </div>
+                        </div>
+                    )}
+
+                    {palace.isEmptyPalace && palace.borrowFromPalace && (
+                        <div className="mb-4">
+                            <h4 className="text-xs uppercase tracking-wider text-slate-500 mb-2">空宫借星</h4>
+                            <div className="text-sm text-slate-300">
+                                对宫 {palace.borrowFromPalace.fromPalaceName}
+                            </div>
+                            <div className="flex flex-wrap gap-2 mt-2">
+                                {(palace.borrowedMajorStars || []).length > 0
+                                    ? palace.borrowedMajorStars?.map((s, i) => renderStar(s, 'bg-emerald-900/20 border-emerald-900/50 text-emerald-300', true, `borrowed-${i}-${s.name}`))
+                                    : <span className="text-slate-600 text-sm">无</span>}
+                            </div>
+                        </div>
+                    )}
+
+                    {palace.surrounding && (
+                        <div className="mb-4">
+                            <h4 className="text-xs uppercase tracking-wider text-slate-500 mb-2">三方四正</h4>
+                            <div className="text-sm text-slate-300 space-y-1">
+                                <div>对宫: {(palace.surrounding.oppositePalace || palace.surrounding.opposite).name}</div>
+                                <div>三方: {(palace.surrounding.trinePalaces || palace.surrounding.trine).map(t => t.name).join('、')}</div>
+                                <div>四正: {(palace.surrounding.fourRectificationPalaces || palace.surrounding.fourRectification).map(t => t.name).join('、')}</div>
+                            </div>
+                        </div>
+                    )}
+
+                    {horoscope?.month?.palaces?.[palace.index] && horoscope.month.palaces[palace.index].length > 0 && (
+                        <div className="mb-4">
+                            <h4 className="text-xs uppercase tracking-wider text-slate-500 mb-2">流曜</h4>
+                            <div className="flex flex-wrap gap-2">
+                                {horoscope.month.palaces[palace.index].map((s, i) => (
+                                    <span key={`flow-${i}-${s.name}`} className="flex items-center gap-1 px-2 py-1 bg-amber-900/20 border border-amber-900/50 rounded text-amber-300 text-sm">
+                                        {s.name}{s.mutagen ? `[流${s.mutagen}]` : ''}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-800 text-sm">
                         <div>
@@ -110,8 +190,15 @@ export default function App() {
   const [astrolabe, setAstrolabe] = useState<Astrolabe | null>(null);
   const [selectedPalace, setSelectedPalace] = useState<Palace | null>(null);
   const [analysis, setAnalysis] = useState<string>('');
+    const [typedAnalysis, setTypedAnalysis] = useState<string>('');
+    const [showAnalysisModal, setShowAnalysisModal] = useState<boolean>(false);
+    const [reasoning, setReasoning] = useState<string>('');
+    const [showReasoning, setShowReasoning] = useState<boolean>(false);
+    const [autoFollow, setAutoFollow] = useState<boolean>(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isFormCollapsed, setIsFormCollapsed] = useState(false);
+    const typingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+    const analysisScrollRef = useRef<HTMLDivElement | null>(null);
 
   const handleInputChange = (field: keyof UserInput, value: any) => {
     setInput(prev => ({ ...prev, [field]: value }));
@@ -133,13 +220,85 @@ export default function App() {
     }
   };
 
-  const handleAnalyze = async () => {
-      if (!astrolabe) return;
-      setIsAnalyzing(true);
-      const result = await analyzeChart(astrolabe);
-      setAnalysis(result);
-      setIsAnalyzing(false);
-  };
+    const handleAnalyze = async () => {
+            if (!astrolabe) return;
+            setIsAnalyzing(true);
+          setAnalysis('');
+          setTypedAnalysis('');
+          setShowAnalysisModal(true);
+              setReasoning('');
+              setShowReasoning(false);
+          setAutoFollow(true);
+            try {
+                const result = await analyzeChart(astrolabe, {
+                    onToken: (chunk) => {
+                        setAnalysis(prev => prev + chunk);
+                    },
+                    onReasoningToken: (chunk) => {
+                        setReasoning(prev => prev + chunk);
+                    }
+                });
+                // Ensure final content captured (in case stream didn't flush trailing)
+                if (result) {
+                    setAnalysis(prev => result.length > prev.length ? result : prev);
+                }
+            } catch (e) {
+                console.error(e);
+                alert("AI 分析失败，请稍后再试。");
+            } finally {
+                setIsAnalyzing(false);
+                setAutoFollow(false);
+            }
+    };
+
+      // Typewriter effect for streamed content
+      useEffect(() => {
+          if (typingTimer.current) {
+              clearInterval(typingTimer.current);
+              typingTimer.current = null;
+          }
+
+          if (!analysis || analysis.length === 0) {
+              setTypedAnalysis('');
+              return;
+          }
+
+          typingTimer.current = setInterval(() => {
+              setTypedAnalysis(prev => {
+                  if (prev.length >= analysis.length) {
+                      if (typingTimer.current) {
+                          clearInterval(typingTimer.current);
+                          typingTimer.current = null;
+                      }
+                      return prev;
+                  }
+                  const remaining = analysis.length - prev.length;
+                  const step = Math.max(1, Math.ceil(remaining / 6));
+                  const nextLen = Math.min(analysis.length, prev.length + step);
+                  const next = analysis.slice(0, nextLen);
+                  if (nextLen >= analysis.length && typingTimer.current) {
+                      clearInterval(typingTimer.current);
+                      typingTimer.current = null;
+                  }
+                  return next;
+              });
+          }, 20);
+
+          return () => {
+              if (typingTimer.current) {
+                  clearInterval(typingTimer.current);
+                  typingTimer.current = null;
+              }
+          };
+      }, [analysis]);
+
+      // Auto-follow scroll when streaming, stop when user scrolls away or when generation ends
+      useEffect(() => {
+          if (!autoFollow || !isAnalyzing) return;
+          const el = analysisScrollRef.current;
+          if (!el) return;
+          el.scrollTop = el.scrollHeight;
+      }, [typedAnalysis, reasoning, autoFollow, isAnalyzing]);
 
   const copyToClipboard = async (text: string) => {
       const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
@@ -170,6 +329,18 @@ export default function App() {
       try {
           const ok = await copyToClipboard(text);
           alert(ok ? "盘面信息已复制到剪贴板！" : "复制失败，请手动复制。");
+      } catch (e) {
+          console.error(e);
+          alert("复制失败，请手动复制。");
+      }
+  };
+
+  const handleCopyAnalysis = async () => {
+      const text = typedAnalysis || analysis;
+      if (!text) return;
+      try {
+          const ok = await copyToClipboard(text);
+          alert(ok ? "AI 解读已复制到剪贴板！" : "复制失败，请手动复制。");
       } catch (e) {
           console.error(e);
           alert("复制失败，请手动复制。");
@@ -398,27 +569,89 @@ export default function App() {
                             astrolabe.bazi ? <BaZiChart bazi={astrolabe.bazi} currentDate={input.focusDate} /> : <div className="p-8 text-center text-slate-500">无法生成八字数据</div>
                         )}
 
-                        {/* Analysis Result */}
-                        {analysis && (
-                            <div className="glass glass-strong rounded-xl p-6 md:p-8 shadow-2xl relative overflow-hidden mt-4">
-                                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 via-amber-400 to-sky-400"></div>
-                                <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-                                    <SparklesIcon /> AI 命理分析
-                                </h3>
-                                <div className="max-w-none">
-                                    <pre className="whitespace-pre-wrap font-ui text-slate-300 text-sm md:text-base leading-relaxed">
-                                        {analysis}
-                                    </pre>
-                                </div>
-                            </div>
-                        )}
                     </div>
                 )}
             </div>
         </div>
-        
+
+        {/* Analysis Modal */}
+        {showAnalysisModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowAnalysisModal(false)}>
+                <div className="glass glass-strong relative rounded-2xl shadow-2xl max-w-4xl w-full max-h-[85vh] overflow-hidden border border-slate-800/80" onClick={e => e.stopPropagation()}>
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 via-amber-400 to-sky-400"></div>
+                    <div className="p-4 md:p-5 flex items-center justify-between border-b border-slate-800/70 bg-slate-900/60">
+                        <div className="flex items-center gap-2 text-white font-semibold">
+                            <SparklesIcon /> AI 命理分析
+                            {isAnalyzing && <span className="text-xs text-amber-200 bg-amber-500/20 px-2 py-0.5 rounded-full">生成中...</span>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={handleCopy}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700 rounded text-xs text-slate-200 border border-slate-700/60 transition-colors"
+                            >
+                                <CopyIcon /> 复制盘面
+                            </button>
+                            <button
+                                onClick={handleCopyAnalysis}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-900/50 hover:bg-emerald-800/70 rounded text-xs text-emerald-100 border border-emerald-500/40 transition-colors"
+                            >
+                                <CopyIcon /> 复制解读
+                            </button>
+                            <button
+                                onClick={() => setShowAnalysisModal(false)}
+                                className="p-2 rounded-full hover:bg-white/10 text-slate-300"
+                                aria-label="关闭分析"
+                            >
+                                <CloseIcon />
+                            </button>
+                        </div>
+                    </div>
+                    <div
+                        ref={analysisScrollRef}
+                        className="p-5 md:p-6 overflow-y-auto max-h-[70vh]"
+                        onScroll={() => {
+                            const el = analysisScrollRef.current;
+                            if (!el) return;
+                            const threshold = 24;
+                            const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+                            const nearBottom = distance <= threshold;
+                            setAutoFollow(prev => {
+                                const next = isAnalyzing && nearBottom;
+                                return prev === next ? prev : next;
+                            });
+                        }}
+                    >
+                        {/* Reasoning (chain-of-thought) collapsible - placed above main content */}
+                        {reasoning && (
+                            <div className="mb-6 border-b border-slate-800/70 pb-4">
+                                <button
+                                    onClick={() => setShowReasoning(v => !v)}
+                                    className="flex items-center gap-2 text-xs uppercase tracking-[0.1em] text-amber-200 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded hover:bg-amber-500/20 transition-colors"
+                                >
+                                    <span className={`transition-transform ${showReasoning ? 'rotate-90' : ''}`}>▶</span>
+                                    思考过程（reasoning）
+                                    {!showReasoning && <span className="text-[10px] text-amber-100/80">（点击展开）</span>}
+                                </button>
+                                {showReasoning && (
+                                    <div className="mt-3 bg-slate-900/60 border border-amber-500/20 rounded-lg p-3 max-h-[30vh] overflow-y-auto">
+                                        <div className="prose prose-invert prose-sm max-w-none" dangerouslySetInnerHTML={renderMarkdown(reasoning)} />
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {typedAnalysis ? (
+                            <div className="prose prose-invert prose-sm md:prose-base max-w-none animate-[fadeIn_0.3s_ease]" dangerouslySetInnerHTML={renderMarkdown(typedAnalysis)} />
+                        ) : (
+                            <div className="text-slate-400 text-sm">正在生成中，请稍候...</div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        )}
+
         {selectedPalace && activeTab === 'zwds' && (
-            <PalaceModal palace={selectedPalace} onClose={() => setSelectedPalace(null)} />
+            <PalaceModal palace={selectedPalace} horoscope={astrolabe?.horoscope} onClose={() => setSelectedPalace(null)} />
         )}
     </div>
   );

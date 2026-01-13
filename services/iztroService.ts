@@ -590,7 +590,8 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
     astrolabe = astro.byLunar(dateStr, timeIndex, input.gender, input.isLeapMonth, true, 'zh-CN');
     
     // For BaZi with True Solar Time, we need to convert Lunar to Solar, then adjust for longitude
-    const solarFromLunar = Solar.fromLunar(Lunar.fromYmd(input.lunarYear, input.lunarMonth, input.lunarDay));
+    const lunarDate = Lunar.fromYmd(input.lunarYear, input.lunarMonth, input.lunarDay, input.isLeapMonth);
+    const solarFromLunar = lunarDate.getSolar();
     const [y, m, d] = [solarFromLunar.getYear(), solarFromLunar.getMonth(), solarFromLunar.getDay()];
     
     // Calculate True Solar Time for BaZi Generation

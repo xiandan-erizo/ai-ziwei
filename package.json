@@ -13,6 +13,7 @@
     "cantian-tymext": "^0.0.21",
     "iztro": "^2.5.4",
     "lunar-javascript": "^1.6.13",
+    "marked": "^15.0.11",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "tyme4ts": "^1.3.4"
