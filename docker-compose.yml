@@ -6,3 +6,5 @@ services:
         OPENAI_API_KEY: ${OPENAI_API_KEY}
     ports:
       - "8080:80"
+    env_file:
+      - .env  # 或者直接引用 .env 文件
