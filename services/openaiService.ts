@@ -85,7 +85,7 @@ F. 最终摘要（给产品用）
 `;
 
     try {
-        const response = await fetch(`${apiBase}/v1/chat/completions`, {
+        const response = await fetch(`${apiBase}/chat/completions`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
