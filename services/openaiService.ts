@@ -7,14 +7,17 @@ type StreamOptions = {
 };
 
 export const analyzeChart = async (astrolabe: Astrolabe, options?: StreamOptions): Promise<string> => {
-    const apiKey = process.env.OPENAI_API_KEY || process.env.API_KEY;
+    // Support both Vite runtime env (import.meta.env) and build-time injected process.env
+    const viteEnv = (typeof import.meta !== "undefined" && (import.meta as any)?.env) || {};
+    const apiKey = viteEnv.OPENAI_API_KEY || viteEnv.API_KEY || process.env.OPENAI_API_KEY || process.env.API_KEY;
     // If OPENAI_PROXY_PATH is provided, hit same-origin proxy to avoid CORS; otherwise call direct base.
-    const proxyPath = (process.env.OPENAI_PROXY_PATH || "").trim();
-    const directBase = process.env.OPENAI_BASE_URL || "https://api.openai.com";
+    const proxyPath = ((viteEnv.OPENAI_PROXY_PATH || process.env.OPENAI_PROXY_PATH || "") as string).trim();
+    const directBase = (viteEnv.OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || "https://api.openai.com") as string;
     const apiBase = ((proxyPath && proxyPath.length > 0) ? proxyPath : directBase).replace(/\/$/, "");
-    const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+    const model = (viteEnv.OPENAI_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini") as string;
 
-    if (!apiKey) {
+    // 在前端场景允许缺省 apiKey（通过同源反向代理在网关端注入），仅当没有代理且缺少 apiKey 时才报错
+    if (!apiBase.startsWith("/api") && !apiKey) {
         throw new Error("OpenAI API key not found");
     }
     
@@ -89,7 +92,7 @@ F. 最终摘要（给产品用）
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${apiKey}`,
+                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
             },
             body: JSON.stringify({
                 model,
