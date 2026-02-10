@@ -69,4 +69,16 @@ describe("calculateAstrolabe", () => {
     expect(result.bazi?.daYun.length).toBeGreaterThan(0);
     expect(result.bazi?.daYun[0].startAge).toBe(expected.startAge);
   });
+
+  it("uses Spring Festival boundary for yearly flow", () => {
+    const result = calculateAstrolabe(
+      buildInput({
+        focusDate: "2020-01-30",
+      })
+    );
+
+    expect(result.horoscope).toBeTruthy();
+    const flowYear = `${result.horoscope?.year.heavenlyStem}${result.horoscope?.year.earthlyBranch}`;
+    expect(flowYear).toBe("庚子");
+  });
 });

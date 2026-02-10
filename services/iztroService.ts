@@ -561,6 +561,11 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
   let astrolabe: any;
   let lunarObj: any;
   let trueSolarDate: Date | null = null;
+  // Mainstream rule for Zi Wei flow: use Spring Festival (lunar new year) as year boundary.
+  astro.config({
+      yearDivide: 'normal',
+      horoscopeDivide: 'normal'
+  });
   const solarTimeOffsetMinutes = (input.longitude - 120) * 4;
   const providerSect: 1 | 2 = 1;
   const dayBoundary = 'ziEarly';
@@ -1112,6 +1117,8 @@ export const calculateAstrolabe = (input: UserInput): Astrolabe => {
 
   if (input.focusDate) {
     try {
+        // Ensure runtime flow calculation follows Spring Festival boundary.
+        astro.config({ horoscopeDivide: 'normal' });
         const flow = astrolabe.horoscope(input.focusDate);
         const termRange = getSolarTermRange(input.focusDate);
 
@@ -1362,7 +1369,7 @@ export const formatChartAsText = (astrolabe: Astrolabe): string => {
       const h = astrolabe.horoscope;
       text += `\n【流运设定 (Flow Rules)】\n`;
       text += `焦点日期 (Focus Date): ${h.solarDate} (UTC+8)\n`;
-      text += `起法规则: 流年按立春交节(Solar Terms), 流月按节气(Solar Terms)\n`;
+      text += `起法规则: 流年按春节(农历正月初一), 流月按节气(Solar Terms)\n`;
       text += `------------------------------------------------\n`;
       
       const yearLifeLoc = getPalaceInfo(h.year.index);
